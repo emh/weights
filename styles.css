@@ -342,6 +342,12 @@
       align-items:center;
       gap:6px;
     }
+    .setLine.setInvalid{
+      background:#fff5f5;
+    }
+    .setLine.setInvalid.currentFocus{
+      background:#fdeeee;
+    }
     .setLine:last-child{ border-bottom:none; }
     .setValue{ min-width:0; }
 
