@@ -6,6 +6,7 @@
     workouts: [],
     screen: "main",
     mainAddOpen: false,
+    mainExpandedWorkoutId: null,
     historyOpen: false,
     historyMaxFocus: null,
     historyFilterOpen: false,
@@ -369,6 +370,9 @@
     }
 
     state.workouts = cleanWorkouts;
+    state.mainExpandedWorkoutId = state.workouts.some(w => w.id === state.mainExpandedWorkoutId)
+      ? state.mainExpandedWorkoutId
+      : null;
     state.expandedWorkoutId = state.workouts.some(w => w.id === state.expandedWorkoutId) ? state.expandedWorkoutId : null;
     if (!state.expandedWorkoutId) state.expandedExerciseId = null;
 
@@ -486,6 +490,7 @@
       workouts: state.workouts,
       screen: state.screen,
       mainAddOpen: state.mainAddOpen,
+      mainExpandedWorkoutId: state.mainExpandedWorkoutId,
       historyOpen: state.historyOpen,
       expandedWorkoutId: state.expandedWorkoutId,
       expandedExerciseId: state.expandedExerciseId,
@@ -505,6 +510,7 @@
         state.workouts = parsed.workouts;
         state.screen = parsed.screen === "workout" ? "workout" : "main";
         state.mainAddOpen = !!parsed.mainAddOpen;
+        state.mainExpandedWorkoutId = parsed.mainExpandedWorkoutId ?? null;
         state.historyOpen = !!parsed.historyOpen;
         state.expandedWorkoutId = parsed.expandedWorkoutId ?? null;
         state.expandedExerciseId = parsed.expandedExerciseId ?? null;
@@ -583,6 +589,7 @@
     state.historyFilterOpen = false;
     state.historyFilterWeight = "";
     state.historyFilterReps = "";
+    state.mainExpandedWorkoutId = workout.id;
     state.expandedWorkoutId = workout.id;
     state.expandedExerciseId = null;
     setCurrentWorkout(workout.id);
@@ -1637,6 +1644,7 @@
 
   function removeWorkout(workoutId) {
     state.workouts = state.workouts.filter(item => item.id !== workoutId);
+    if (state.mainExpandedWorkoutId === workoutId) state.mainExpandedWorkoutId = null;
     if (state.expandedWorkoutId === workoutId) {
       state.expandedWorkoutId = null;
       state.expandedExerciseId = null;
@@ -1656,6 +1664,7 @@
     state.historyFilterOpen = false;
     state.historyFilterWeight = "";
     state.historyFilterReps = "";
+    state.mainExpandedWorkoutId = null;
     state.expandedWorkoutId = null;
     state.expandedExerciseId = null;
     state.current = null;
@@ -1723,6 +1732,26 @@
       render();
     }, { passive:false });
     return deleteBtn;
+  }
+  function makeEditButton(onEdit) {
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "rowEditBtn";
+    editBtn.setAttribute("aria-label", "Open workout");
+    editBtn.setAttribute("title", "Open workout");
+    editBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path>
+        <path d="m15 5 4 4"></path>
+      </svg>
+    `;
+    editBtn.addEventListener("pointerup", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.edit) return;
+      onEdit();
+    }, { passive:false });
+    return editBtn;
   }
 
   // ---------- Tap / Double-tap ----------
@@ -2073,6 +2102,7 @@
         const row = document.createElement("div");
         row.className = "row";
         row.dataset.workoutId = w.id;
+        const isMainExpanded = state.mainExpandedWorkoutId === w.id;
 
         const line = document.createElement("div");
         line.className = "workoutLine";
@@ -2098,19 +2128,54 @@
           const spacer = document.createElement("div");
           spacer.className = "rowSpacer";
           line.appendChild(spacer);
-          line.appendChild(makeDeleteButton(() => removeWorkout(w.id)));
+          const actions = document.createElement("div");
+          actions.className = "rowActions";
+          actions.appendChild(makeEditButton(() => {
+            if (!openWorkoutScreen(w.id)) return;
+            save();
+            render({ focusAddExercise:true });
+          }));
+          actions.appendChild(makeDeleteButton(() => removeWorkout(w.id)));
+          line.appendChild(actions);
         }
 
         row.appendChild(line);
+        if (isMainExpanded) {
+          const details = document.createElement("div");
+          details.className = "mainWorkoutDetails";
+          for (const ex of w.exercises) {
+            const detailLine = document.createElement("div");
+            detailLine.className = "mainWorkoutDetail";
+
+            const detailName = document.createElement("span");
+            detailName.className = "mainWorkoutDetailName";
+            detailName.textContent = ex.name;
+            detailLine.appendChild(detailName);
+
+            const detailSummary = document.createElement("span");
+            detailSummary.className = "mainWorkoutDetailSummary";
+            detailSummary.textContent = summarizeSets(ex.sets);
+            detailLine.appendChild(detailSummary);
+
+            details.appendChild(detailLine);
+          }
+          row.appendChild(details);
+        }
         row.addEventListener("pointerup", (ev) => {
           const target = ev.target instanceof Element ? ev.target : null;
-          if (target && target.closest(".rowDeleteBtn")) return;
+          if (target && target.closest(".rowDeleteBtn, .rowEditBtn")) return;
           if (state.edit) return;
           ev.preventDefault();
           ev.stopPropagation();
-          openWorkoutScreen(w.id);
+          const wasExpanded = state.mainExpandedWorkoutId === w.id;
+          state.mainExpandedWorkoutId = wasExpanded ? null : w.id;
+          if (wasExpanded) {
+            if (isCurrentWorkout(w.id)) state.current = null;
+          } else {
+            setCurrentWorkout(w.id);
+          }
           save();
-          render({ focusAddExercise:true });
+          render();
         }, { passive:false });
 
         elList.appendChild(row);
@@ -2183,11 +2248,21 @@
         bindTapHandlers(exDiv, {
           onTap: () => {
             if (state.edit) return;
-            const willExpand = state.expandedExerciseId !== ex.id;
-            state.expandedExerciseId = willExpand ? ex.id : null;
-            setCurrentExercise(w.id, ex.id);
+            const wasExpanded = state.expandedExerciseId === ex.id;
+            if (wasExpanded) {
+              state.expandedExerciseId = null;
+              if (state.current &&
+                  state.current.workoutId === w.id &&
+                  (state.current.kind === "exercise" || state.current.kind === "set") &&
+                  state.current.exerciseId === ex.id) {
+                state.current = null;
+              }
+            } else {
+              state.expandedExerciseId = ex.id;
+              setCurrentExercise(w.id, ex.id);
+            }
             save();
-            render(willExpand ? { focusAddSet:true } : undefined);
+            render(wasExpanded ? { focusAddExercise:true } : { focusAddSet:true });
           },
           onDoubleTap: () => {
             if (state.edit) return;
@@ -2505,5 +2580,10 @@
   registerPwaServiceWorker();
   load();
   render();
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      document.body.classList.remove("boot");
+    }, 460);
+  });
 
 })();
