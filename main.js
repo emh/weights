@@ -2073,7 +2073,7 @@
       if (!getCurrentExerciseForHistory(activeWorkout)) return;
       state.historyOpen = !state.historyOpen;
       save();
-      render();
+      renderHistoryDrawer(activeWorkout);
     });
     elHistoryTab.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") return;

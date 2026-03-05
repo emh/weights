@@ -4,6 +4,7 @@
       --muted:#666;
       --line:#d9d9d9;
       --line2:#ececec;
+      --bar:#f8f9fc;
       --focus:#1a73e8;
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       --sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
@@ -25,10 +26,14 @@
     .card{
       border:1px solid var(--line);
       border-radius:12px;
-      overflow:hidden;
+      overflow:visible;
       margin:10px 0 14px;
     }
     .titleBar{
+      position:sticky;
+      top:0;
+      z-index:20;
+      background:var(--bar);
       border-bottom:1px solid var(--line);
     }
     .titleMain{
@@ -443,7 +448,7 @@
       width:100%;
       border:0;
       border-bottom:1px solid var(--line2);
-      background:#fff;
+      background:var(--bar);
       color:#222;
       min-height:34px;
       padding:6px 34px 6px 10px;
@@ -455,6 +460,7 @@
       line-height:1.2;
       touch-action:manipulation;
       cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
     }
     .historyTabActions{
       display:flex;
@@ -467,7 +473,7 @@
       transform:translateY(-50%);
     }
     .historyTab:active{
-      background:#f3f6ff;
+      background:var(--bar);
     }
     .historyTabText{
       min-width:0;
@@ -596,4 +602,25 @@
     }
     .historyRow:last-child{
       border-bottom:none;
+    }
+
+    @media (max-width: 680px){
+      .wrap{
+        max-width:none;
+        margin:0;
+        padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
+      }
+      .card{
+        border:0;
+        border-radius:0;
+        margin:0;
+      }
+      .historyDrawer{
+        left:0;
+        transform:none;
+        width:100vw;
+        border-left:0;
+        border-right:0;
+        border-radius:0;
+      }
     }
