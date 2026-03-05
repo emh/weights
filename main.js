@@ -6,6 +6,10 @@
     workouts: [],
     screen: "main",
     mainAddOpen: false,
+    historyOpen: false,
+    historyFilterOpen: false,
+    historyFilterWeight: "",
+    historyFilterReps: "",
     expandedWorkoutId: null,
     expandedExerciseId: null,
     exerciseLookup: [],
@@ -27,10 +31,35 @@
   const elDeleteConfirmRow = document.getElementById("deleteConfirmRow");
   const elDeleteConfirmOkBtn = document.getElementById("deleteConfirmOkBtn");
   const elDeleteConfirmCancelBtn = document.getElementById("deleteConfirmCancelBtn");
+  const elHistoryDrawer = document.getElementById("historyDrawer");
+  const elHistoryTab = document.getElementById("historyTab");
+  const elHistoryChevron = document.getElementById("historyChevron");
+  const elHistoryList = document.getElementById("historyList");
+  const elHistoryMeta = document.getElementById("historyMeta");
+  const elHistoryFilterBtn = document.getElementById("historyFilterBtn");
+  const elHistoryFilterIcon = document.getElementById("historyFilterIcon");
+  const elHistoryFilterBar = document.getElementById("historyFilterBar");
+  const elHistoryWeightFilterInput = document.getElementById("historyWeightFilterInput");
+  const elHistoryRepsFilterInput = document.getElementById("historyRepsFilterInput");
 
   let importStatusTimer = null;
   let settingsMenuOpen = false;
   let deleteAllConfirmOpen = false;
+  const HISTORY_CHEVRON_UP = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m18 15-6-6-6 6"></path>
+    </svg>
+  `;
+  const HISTORY_CHEVRON_DOWN = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6"></path>
+    </svg>
+  `;
+  const HISTORY_FILTER_ICON = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path>
+    </svg>
+  `;
 
   // ---------- Utilities ----------
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -255,12 +284,24 @@
     if (state.screen !== "workout") {
       state.screen = "main";
       state.mainAddOpen = !!state.mainAddOpen;
+      state.historyOpen = false;
+      state.historyFilterOpen = false;
+      state.historyFilterWeight = "";
+      state.historyFilterReps = "";
       state.expandedWorkoutId = null;
       state.expandedExerciseId = null;
     } else {
       state.mainAddOpen = false;
+      state.historyOpen = !!state.historyOpen;
+      state.historyFilterOpen = !!state.historyFilterOpen;
+      state.historyFilterWeight = String(state.historyFilterWeight || "");
+      state.historyFilterReps = String(state.historyFilterReps || "");
       if (!state.expandedWorkoutId) {
         state.screen = "main";
+        state.historyOpen = false;
+        state.historyFilterOpen = false;
+        state.historyFilterWeight = "";
+        state.historyFilterReps = "";
         state.expandedExerciseId = null;
       }
     }
@@ -347,6 +388,7 @@
       workouts: state.workouts,
       screen: state.screen,
       mainAddOpen: state.mainAddOpen,
+      historyOpen: state.historyOpen,
       expandedWorkoutId: state.expandedWorkoutId,
       expandedExerciseId: state.expandedExerciseId,
       current: state.current
@@ -365,6 +407,7 @@
         state.workouts = parsed.workouts;
         state.screen = parsed.screen === "workout" ? "workout" : "main";
         state.mainAddOpen = !!parsed.mainAddOpen;
+        state.historyOpen = !!parsed.historyOpen;
         state.expandedWorkoutId = parsed.expandedWorkoutId ?? null;
         state.expandedExerciseId = parsed.expandedExerciseId ?? null;
         state.current = parsed.current ?? null;
@@ -421,6 +464,10 @@
   function setScreenMain() {
     state.screen = "main";
     state.mainAddOpen = false;
+    state.historyOpen = false;
+    state.historyFilterOpen = false;
+    state.historyFilterWeight = "";
+    state.historyFilterReps = "";
     state.expandedWorkoutId = null;
     state.expandedExerciseId = null;
     state.edit = null;
@@ -432,6 +479,10 @@
 
     state.screen = "workout";
     state.mainAddOpen = false;
+    state.historyOpen = false;
+    state.historyFilterOpen = false;
+    state.historyFilterWeight = "";
+    state.historyFilterReps = "";
     state.expandedWorkoutId = workout.id;
     state.expandedExerciseId = null;
     setCurrentWorkout(workout.id);
@@ -1070,6 +1121,220 @@
       state.current.exerciseId === exerciseId &&
       state.current.setIndex === setIndex;
   }
+  function getCurrentExerciseForHistory(workout) {
+    if (!workout || !state.current || state.current.workoutId !== workout.id) return null;
+    if (state.current.kind === "exercise") {
+      return findExercise(workout, state.current.exerciseId);
+    }
+    if (state.current.kind === "set") {
+      return findExercise(workout, state.current.exerciseId);
+    }
+    return null;
+  }
+  function getExerciseHistoryRows(workout, exercise) {
+    if (!workout || !exercise) return [];
+    const targetKey = normalizeExerciseName(exercise.name).toLowerCase();
+    if (!targetKey) return [];
+
+    const rows = [];
+    for (let i = state.workouts.length - 1; i >= 0; i--) {
+      const candidate = state.workouts[i];
+      if (candidate.id === workout.id) continue;
+      if (candidate.dateISO >= workout.dateISO) continue;
+
+      const match = candidate.exercises.find(item => normalizeExerciseName(item.name).toLowerCase() === targetKey);
+      if (!match) continue;
+      const summary = summarizeSets(match.sets || []);
+      if (!summary) continue;
+      rows.push({ dateISO: candidate.dateISO, summary, sets: match.sets || [] });
+    }
+    return rows;
+  }
+  function parseNumericFilter(raw) {
+    const t = String(raw || "").trim();
+    if (!t) return null;
+    const m = t.match(/^(<=|>=|<|>|=)?\s*(-?\d+(\.\d+)?)$/);
+    if (!m) return { invalid:true, op:"=", value:0 };
+    return { invalid:false, op:m[1] || "=", value:Number(m[2]) };
+  }
+  function passesNumericFilter(value, rule) {
+    if (!rule || rule.invalid) return false;
+    if (!Number.isFinite(value)) return false;
+    switch (rule.op) {
+      case "<": return value < rule.value;
+      case "<=": return value <= rule.value;
+      case ">": return value > rule.value;
+      case ">=": return value >= rule.value;
+      case "=":
+      default:
+        return value === rule.value;
+    }
+  }
+  function setMatchesHistoryFilters(set, weightRule, repsRule) {
+    if (!set || typeof set !== "object" || set.invalid) return false;
+
+    if (repsRule) {
+      const metricInfo = getSetMetric(set);
+      if (!metricInfo || metricInfo.metric !== "reps") return false;
+      if (!passesNumericFilter(Number(metricInfo.value), repsRule)) return false;
+    }
+
+    if (weightRule) {
+      const weight = Number(set.weight);
+      if (!Number.isFinite(weight)) return false;
+      const weightLb = normalizeUnitToken(set.unit || "lb") === "kg" ? (weight * 2.2046226218) : weight;
+      if (!passesNumericFilter(weightLb, weightRule)) return false;
+    }
+
+    return true;
+  }
+  function getExerciseRepMaxSummary(historyRows) {
+    if (!historyRows || !historyRows.length) return "";
+
+    const maxByReps = new Map();
+    for (const row of historyRows) {
+      const sets = Array.isArray(row.sets) ? row.sets : [];
+      for (const set of sets) {
+        if (!set || typeof set !== "object" || set.invalid) continue;
+        const metricInfo = getSetMetric(set);
+        if (!metricInfo || metricInfo.metric !== "reps") continue;
+        if (!Number.isFinite(set.weight)) continue;
+
+        const reps = Number(metricInfo.value);
+        if (!Number.isInteger(reps) || reps <= 0) continue;
+
+        const weight = Number(set.weight);
+        const unit = normalizeUnitToken(set.unit || "lb");
+        const comparable = unit === "kg" ? weight * 2.2046226218 : weight;
+        const prev = maxByReps.get(reps);
+        if (!prev || comparable > prev.comparable) {
+          maxByReps.set(reps, { weight, unit, comparable });
+        }
+      }
+    }
+
+    if (!maxByReps.size) return "";
+    const preferred = [1, 2, 5];
+    const repsList = [];
+    for (const rep of preferred) {
+      if (maxByReps.has(rep)) repsList.push(rep);
+    }
+    if (repsList.length < 3) {
+      const rest = [...maxByReps.keys()].filter(rep => !repsList.includes(rep)).sort((a, b) => a - b);
+      for (const rep of rest) {
+        repsList.push(rep);
+        if (repsList.length >= 3) break;
+      }
+    }
+    if (!repsList.length) return "";
+
+    const parts = repsList.map((rep) => {
+      const item = maxByReps.get(rep);
+      if (!item) return "";
+      return `${rep}@${trimNum(item.weight)}${item.unit === "kg" ? "kg" : ""}`;
+    }).filter(Boolean);
+    if (!parts.length) return "";
+    return `Maxes: ${parts.join(" ")}`;
+  }
+  function renderHistoryDrawer(activeWorkout) {
+    if (!elHistoryDrawer || !elHistoryTab || !elHistoryChevron || !elHistoryList || !elHistoryMeta ||
+        !elHistoryFilterBtn || !elHistoryFilterIcon || !elHistoryFilterBar ||
+        !elHistoryWeightFilterInput || !elHistoryRepsFilterInput) {
+      return;
+    }
+
+    const hide = () => {
+      elHistoryList.innerHTML = "";
+      elHistoryDrawer.classList.add("hidden");
+      elHistoryDrawer.classList.remove("show", "open");
+      elHistoryTab.setAttribute("aria-expanded", "false");
+      elHistoryChevron.innerHTML = HISTORY_CHEVRON_UP;
+      elHistoryMeta.textContent = "";
+      elHistoryMeta.classList.remove("show");
+      elHistoryFilterBtn.classList.add("hidden");
+      elHistoryFilterBtn.classList.remove("active");
+      elHistoryFilterBar.classList.remove("show");
+      elHistoryFilterBar.classList.add("hidden");
+    };
+
+    if (state.screen !== "workout" || !activeWorkout) {
+      state.historyOpen = false;
+      state.historyFilterOpen = false;
+      state.historyFilterWeight = "";
+      state.historyFilterReps = "";
+      hide();
+      return;
+    }
+
+    const currentExercise = getCurrentExerciseForHistory(activeWorkout);
+    if (!currentExercise) {
+      state.historyOpen = false;
+      state.historyFilterOpen = false;
+      state.historyFilterWeight = "";
+      state.historyFilterReps = "";
+      hide();
+      return;
+    }
+
+    const rows = getExerciseHistoryRows(activeWorkout, currentExercise);
+    if (!state.historyOpen) {
+      state.historyFilterOpen = false;
+      state.historyFilterWeight = "";
+      state.historyFilterReps = "";
+    }
+
+    const rawWeightFilter = String(state.historyFilterWeight || "").trim();
+    const rawRepsFilter = String(state.historyFilterReps || "").trim();
+    const weightRule = rawWeightFilter ? parseNumericFilter(rawWeightFilter) : null;
+    const repsRule = rawRepsFilter ? parseNumericFilter(rawRepsFilter) : null;
+    const hasAnyFilter = !!rawWeightFilter || !!rawRepsFilter;
+    const hasInvalidFilter = (weightRule && weightRule.invalid) || (repsRule && repsRule.invalid);
+
+    const visibleRows = [];
+    for (const row of rows) {
+      const allSets = Array.isArray(row.sets) ? row.sets : [];
+      const sets = !hasAnyFilter
+        ? allSets
+        : (hasInvalidFilter ? [] : allSets.filter(set => setMatchesHistoryFilters(set, weightRule, repsRule)));
+      if (!sets.length) continue;
+      visibleRows.push({ dateISO: row.dateISO, sets });
+    }
+
+    const maxesSummary = getExerciseRepMaxSummary(visibleRows.map(row => ({ sets: row.sets })));
+    elHistoryList.innerHTML = "";
+    for (const row of visibleRows) {
+      const summary = summarizeSets(row.sets);
+      if (!summary) continue;
+      const line = document.createElement("div");
+      line.className = "historyRow";
+      line.textContent = `${fmtDateDisplay(row.dateISO)} ${summary}`;
+      elHistoryList.appendChild(line);
+    }
+
+    elHistoryDrawer.classList.remove("hidden");
+    elHistoryDrawer.classList.add("show");
+    elHistoryDrawer.classList.toggle("open", !!state.historyOpen);
+    elHistoryTab.setAttribute("aria-expanded", state.historyOpen ? "true" : "false");
+    elHistoryChevron.innerHTML = state.historyOpen ? HISTORY_CHEVRON_DOWN : HISTORY_CHEVRON_UP;
+
+    if (!elHistoryFilterIcon.innerHTML.trim()) {
+      elHistoryFilterIcon.innerHTML = HISTORY_FILTER_ICON;
+    }
+    const showFilterBar = !!state.historyOpen && !!state.historyFilterOpen;
+    elHistoryFilterBtn.classList.toggle("hidden", !state.historyOpen);
+    elHistoryFilterBtn.classList.toggle("active", showFilterBar);
+    elHistoryFilterBar.classList.toggle("show", showFilterBar);
+    elHistoryFilterBar.classList.toggle("hidden", !showFilterBar);
+    if (elHistoryWeightFilterInput.value !== state.historyFilterWeight) {
+      elHistoryWeightFilterInput.value = state.historyFilterWeight;
+    }
+    if (elHistoryRepsFilterInput.value !== state.historyFilterReps) {
+      elHistoryRepsFilterInput.value = state.historyFilterReps;
+    }
+
+    elHistoryMeta.textContent = maxesSummary;
+    elHistoryMeta.classList.toggle("show", !!maxesSummary && !!state.historyOpen);
+  }
 
   function removeWorkout(workoutId) {
     state.workouts = state.workouts.filter(item => item.id !== workoutId);
@@ -1088,6 +1353,10 @@
     state.workouts = [];
     state.screen = "main";
     state.mainAddOpen = false;
+    state.historyOpen = false;
+    state.historyFilterOpen = false;
+    state.historyFilterWeight = "";
+    state.historyFilterReps = "";
     state.expandedWorkoutId = null;
     state.expandedExerciseId = null;
     state.current = null;
@@ -1731,6 +2000,8 @@
       elList.appendChild(wRow);
     }
 
+    renderHistoryDrawer(activeWorkout);
+
     if (focusTarget && (opts.focusEdit || opts.focusAddExercise || opts.focusAddSet)) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -1788,6 +2059,60 @@
       if (prevWorkoutId) setCurrentWorkout(prevWorkoutId);
       save();
       render(prevWorkoutId ? { scrollToWorkoutId: prevWorkoutId } : undefined);
+    });
+  }
+  if (elHistoryTab) {
+    elHistoryTab.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const target = ev.target instanceof Element ? ev.target : null;
+      if (target && target.closest(".historyFilterBtn")) return;
+      if (state.screen !== "workout") return;
+      const activeWorkout = findWorkout(state.expandedWorkoutId);
+      if (!activeWorkout) return;
+      if (!getCurrentExerciseForHistory(activeWorkout)) return;
+      state.historyOpen = !state.historyOpen;
+      save();
+      render();
+    });
+    elHistoryTab.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      elHistoryTab.click();
+    });
+  }
+  if (elHistoryFilterBtn) {
+    elHistoryFilterBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "workout" || !state.historyOpen) return;
+      const activeWorkout = findWorkout(state.expandedWorkoutId);
+      if (!activeWorkout) return;
+      if (!getCurrentExerciseForHistory(activeWorkout)) return;
+
+      if (state.historyFilterOpen) {
+        state.historyFilterOpen = false;
+        state.historyFilterWeight = "";
+        state.historyFilterReps = "";
+      } else {
+        state.historyFilterOpen = true;
+      }
+      save();
+      render();
+    });
+  }
+  if (elHistoryWeightFilterInput) {
+    elHistoryWeightFilterInput.addEventListener("input", () => {
+      state.historyFilterWeight = elHistoryWeightFilterInput.value || "";
+      const activeWorkout = findWorkout(state.expandedWorkoutId);
+      renderHistoryDrawer(activeWorkout);
+    });
+  }
+  if (elHistoryRepsFilterInput) {
+    elHistoryRepsFilterInput.addEventListener("input", () => {
+      state.historyFilterReps = elHistoryRepsFilterInput.value || "";
+      const activeWorkout = findWorkout(state.expandedWorkoutId);
+      renderHistoryDrawer(activeWorkout);
     });
   }
   if (elImportCsvBtn && elImportInput) {

@@ -41,6 +41,27 @@
       <div id="mainAddHost"></div>
       <div id="importStatus" class="importStatus" aria-live="polite"></div>
       <div id="list"></div>
+      <div id="historyDrawer" class="historyDrawer hidden">
+        <div id="historyTab" class="historyTab" role="button" tabindex="0" aria-expanded="false">
+          <div class="historyTabText">
+            <span class="historyTabLabel">History</span>
+            <span id="historyMeta" class="historyMeta"></span>
+          </div>
+          <div class="historyTabActions">
+            <button id="historyFilterBtn" class="historyFilterBtn hidden" type="button" aria-label="Filter history" title="Filter history">
+              <span id="historyFilterIcon" class="historyFilterIcon" aria-hidden="true"></span>
+            </button>
+            <span id="historyChevron" class="historyChevron" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div id="historyFilterBar" class="historyFilterBar hidden">
+          <input id="historyWeightFilterInput" type="text" placeholder="Weight..." autocomplete="off" spellcheck="false" />
+          <input id="historyRepsFilterInput" type="text" placeholder="Reps..." autocomplete="off" spellcheck="false" />
+        </div>
+        <div id="historyPanel" class="historyPanel">
+          <div id="historyList" class="historyList"></div>
+        </div>
+      </div>
     </div>
   </div>
 
