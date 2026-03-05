@@ -799,6 +799,46 @@
     const { suffixPart } = splitExerciseDraftForAutocomplete(rawInput);
     return suffixPart ? `${suggestion} ${suffixPart}` : suggestion;
   }
+  function splitWorkoutDraftForAutocomplete(raw) {
+    const s = String(raw || "");
+    const m = s.match(/^(\S+)(\s+)(.*)$/);
+    if (!m) return null;
+
+    const dateToken = m[1];
+    if (!parseDateToken(dateToken)) return null;
+
+    const dateSep = m[2];
+    const rest = m[3] || "";
+    const lastCommaIndex = rest.lastIndexOf(",");
+    const prefix = lastCommaIndex >= 0 ? rest.slice(0, lastCommaIndex + 1) : "";
+    const activeChunk = lastCommaIndex >= 0 ? rest.slice(lastCommaIndex + 1) : rest;
+    const leadingWs = (activeChunk.match(/^\s*/) || [""])[0];
+    const activeName = activeChunk.trim();
+
+    return { dateToken, dateSep, prefix, leadingWs, activeName };
+  }
+  function getWorkoutAutocompleteSuggestions(rawInput) {
+    const split = splitWorkoutDraftForAutocomplete(rawInput);
+    if (!split) return [];
+
+    const q = split.activeName.toLowerCase();
+    if (!q) return [];
+
+    const starts = [];
+    const contains = [];
+    for (const candidate of state.exerciseLookup) {
+      const lc = candidate.toLowerCase();
+      if (lc === q) continue;
+      if (lc.startsWith(q)) starts.push(candidate);
+      else if (lc.includes(q)) contains.push(candidate);
+    }
+    return [...starts, ...contains].slice(0, 6);
+  }
+  function applyWorkoutAutocompleteSelection(rawInput, suggestion) {
+    const split = splitWorkoutDraftForAutocomplete(rawInput);
+    if (!split) return rawInput;
+    return `${split.dateToken}${split.dateSep}${split.prefix}${split.leadingWs}${suggestion}`;
+  }
 
   function summarizeSets(sets) {
     if (!sets.length) return "";
@@ -988,7 +1028,16 @@
   }
 
   // ---------- In-place editor widget ----------
-  function makeInlineEditor({ placeholder, value, onCommit, onCancel, compact=false, clearOnCancel=false, autocompleteExercise=false }) {
+  function makeInlineEditor({
+    placeholder,
+    value,
+    onCommit,
+    onCancel,
+    compact=false,
+    clearOnCancel=false,
+    autocompleteExercise=false,
+    autocompleteWorkout=false
+  }) {
     const wrapper = document.createElement("div");
     wrapper.className = "inlineEditor";
 
@@ -1014,6 +1063,9 @@
     cancel.title = clearOnCancel ? "Clear" : "Cancel";
 
     let autocompleteList = null;
+    const autocompleteEnabled = autocompleteExercise || autocompleteWorkout;
+    const getSuggestions = autocompleteWorkout ? getWorkoutAutocompleteSuggestions : getExerciseAutocompleteSuggestions;
+    const applySuggestion = autocompleteWorkout ? applyWorkoutAutocompleteSelection : applyExerciseAutocompleteSelection;
 
     function hideAutocomplete() {
       if (!autocompleteList) return;
@@ -1023,7 +1075,7 @@
     function renderAutocomplete() {
       if (!autocompleteList) return;
 
-      const suggestions = getExerciseAutocompleteSuggestions(input.value);
+      const suggestions = getSuggestions(input.value);
       autocompleteList.innerHTML = "";
       if (!suggestions.length) {
         autocompleteList.classList.remove("show");
@@ -1042,7 +1094,7 @@
         btn.addEventListener("pointerup", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          input.value = applyExerciseAutocompleteSelection(input.value, suggestion);
+          input.value = applySuggestion(input.value, suggestion);
           renderAutocomplete();
           input.focus();
           input.setSelectionRange(input.value.length, input.value.length);
@@ -1059,7 +1111,7 @@
       if (clearOnCancel) {
         input.value = "";
         input.focus();
-        if (autocompleteExercise) renderAutocomplete();
+        if (autocompleteEnabled) renderAutocomplete();
       } else {
         onCancel();
       }
@@ -1069,7 +1121,7 @@
       if (e.key === "Enter") { e.preventDefault(); onCommit(input.value); }
       else if (e.key === "Escape") {
         e.preventDefault();
-        if (autocompleteExercise && autocompleteList && autocompleteList.classList.contains("show")) {
+        if (autocompleteEnabled && autocompleteList && autocompleteList.classList.contains("show")) {
           hideAutocomplete();
           return;
         }
@@ -1077,7 +1129,7 @@
       }
     });
 
-    if (autocompleteExercise) {
+    if (autocompleteEnabled) {
       autocompleteList = document.createElement("div");
       autocompleteList.className = "autocompleteList";
       input.addEventListener("input", renderAutocomplete);
@@ -1094,7 +1146,7 @@
     wrapper._focus = () => {
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
-      if (autocompleteExercise) renderAutocomplete();
+      if (autocompleteEnabled) renderAutocomplete();
     };
 
     return wrapper;
@@ -1267,7 +1319,8 @@
           onCancel: () => {
             state.mainAddOpen = false;
             render();
-          }
+          },
+          autocompleteWorkout:true
         });
         elMainAddHost.appendChild(add);
         focusTarget = add;
