@@ -27,6 +27,7 @@
   const elTitleMenu = document.getElementById("titleMenu");
   const elMainAddHost = document.getElementById("mainAddHost");
   const elImportCsvBtn = document.getElementById("importCsvBtn");
+  const elExportCsvBtn = document.getElementById("exportCsvBtn");
   const elDeleteAllBtn = document.getElementById("deleteAllBtn");
   const elDeleteConfirmRow = document.getElementById("deleteConfirmRow");
   const elDeleteConfirmOkBtn = document.getElementById("deleteConfirmOkBtn");
@@ -567,6 +568,42 @@
     row.push(field);
     if (row.length > 1 || row[0].trim() !== "") rows.push(row);
     return rows;
+  }
+  function csvEscapeField(value) {
+    const s = String(value ?? "");
+    if (!/[",\r\n]/.test(s)) return s;
+    return `"${s.replace(/"/g, "\"\"")}"`;
+  }
+  function buildExportCsvData() {
+    const rows = [["date", "exercise", "sets/reps/weight"]];
+    const workoutsAsc = [...state.workouts].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+    for (const workout of workoutsAsc) {
+      const date = fmtDateDisplay(workout.dateISO);
+      const exercises = Array.isArray(workout.exercises) ? workout.exercises : [];
+      for (const exercise of exercises) {
+        const name = normalizeExerciseName(exercise.name);
+        if (!name) continue;
+        const sets = Array.isArray(exercise.sets) ? exercise.sets : [];
+        rows.push([date, name, summarizeSets(sets)]);
+      }
+    }
+
+    return {
+      rowCount: Math.max(0, rows.length - 1),
+      text: rows.map((row) => row.map(csvEscapeField).join(",")).join("\n")
+    };
+  }
+  function downloadCsv(text, filename) {
+    const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
   function looksLikeCsvHeader(row) {
     if (!Array.isArray(row) || !row.length) return false;
@@ -2122,6 +2159,20 @@
       if (state.screen !== "main") return;
       setDeleteAllConfirmOpen(false);
       elImportInput.click();
+    });
+  }
+  if (elExportCsvBtn) {
+    elExportCsvBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "main") return;
+      setDeleteAllConfirmOpen(false);
+
+      const { rowCount, text } = buildExportCsvData();
+      const filename = `workouts_export_${fmtDateDisplay(todayISO())}.csv`;
+      downloadCsv(text, filename);
+      setSettingsMenuOpen(false);
+      showImportStatus(`Exported ${rowCount} rows.`, false);
     });
   }
   if (elDeleteAllBtn) {
