@@ -9,7 +9,37 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="title">Weights</div>
+      <div class="titleBar">
+        <div class="titleMain">
+          <button id="settingsBtn" class="settingsBtn" type="button" aria-label="Settings" title="Settings">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+          <span class="titleText">Weights</span>
+          <button id="addWorkoutBtn" class="titleRightBtn" type="button" aria-label="Add workout" title="Add workout">+</button>
+          <button id="backBtn" class="titleRightBtn hidden" type="button" aria-label="Back" title="Back">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="titleMenu" class="titleMenu">
+          <button id="importCsvBtn" class="titleMenuBtn" type="button">Import CSV</button>
+          <button id="deleteAllBtn" class="titleMenuBtn danger" type="button">Delete All</button>
+          <div id="deleteConfirmRow" class="deleteConfirmRow">
+            <span class="deleteConfirmText">Are you sure?</span>
+            <div class="deleteConfirmActions">
+              <button id="deleteConfirmOkBtn" class="deleteConfirmBtn ok" type="button" aria-label="Confirm delete all" title="Confirm">✓</button>
+              <button id="deleteConfirmCancelBtn" class="deleteConfirmBtn cancel" type="button" aria-label="Cancel delete all" title="Cancel">×</button>
+            </div>
+          </div>
+          <input id="csvImportInput" class="fileInput" type="file" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <div id="mainAddHost"></div>
+      <div id="importStatus" class="importStatus" aria-live="polite"></div>
       <div id="list"></div>
     </div>
   </div>

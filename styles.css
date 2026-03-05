@@ -28,12 +28,198 @@
       overflow:hidden;
       margin:10px 0 14px;
     }
-    .title{
-      text-align:center;
-      padding:14px 12px;
-      font-weight:650;
+    .titleBar{
       border-bottom:1px solid var(--line);
+    }
+    .titleMain{
+      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:8px 40px;
+    }
+    .titleText{
+      font-size:14px;
+      line-height:1.2;
+      font-weight:650;
       letter-spacing:.2px;
+      text-align:center;
+      width:100%;
+      user-select:none;
+      -webkit-user-select:none;
+    }
+    .settingsBtn{
+      position:absolute;
+      left:8px;
+      top:50%;
+      transform:translateY(-50%);
+      width:24px;
+      height:24px;
+      border:0;
+      border-radius:6px;
+      padding:0;
+      background:transparent;
+      color:#555;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      touch-action:manipulation;
+      z-index:2;
+    }
+    .settingsBtn svg{
+      width:16px;
+      height:16px;
+      display:block;
+      stroke:currentColor;
+    }
+    .settingsBtn.open{
+      background:#f2f4f8;
+      color:#222;
+    }
+    .titleRightBtn{
+      position:absolute;
+      right:8px;
+      top:50%;
+      transform:translateY(-50%);
+      width:24px;
+      height:24px;
+      border:0;
+      border-radius:6px;
+      padding:0;
+      background:transparent;
+      color:#555;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      touch-action:manipulation;
+      z-index:2;
+      font-family:var(--sans);
+      font-size:20px;
+      line-height:1;
+      font-weight:400;
+    }
+    .titleRightBtn svg{
+      width:16px;
+      height:16px;
+      display:block;
+      stroke:currentColor;
+    }
+    .titleRightBtn:active{
+      background:#f2f4f8;
+      color:#222;
+    }
+    #backBtn{
+      left:8px;
+      right:auto;
+    }
+    .hidden{
+      display:none !important;
+    }
+    .titleMenu{
+      max-height:0;
+      overflow:hidden;
+      border-top:0 solid var(--line2);
+      transition:max-height .15s ease, border-width .15s ease;
+    }
+    .titleMenu.show{
+      max-height:140px;
+      border-top:1px solid var(--line2);
+    }
+    .titleMenuBtn{
+      width:100%;
+      border:0;
+      border-bottom:1px solid var(--line2);
+      background:#fff;
+      color:#222;
+      font-family:var(--sans);
+      font-size:12px;
+      line-height:1.2;
+      text-align:left;
+      padding:9px 12px;
+      touch-action:manipulation;
+    }
+    .titleMenuBtn.danger{
+      color:#9a2f2f;
+    }
+    .titleMenuBtn:active{
+      background:#f3f6ff;
+    }
+    .deleteConfirmRow{
+      display:none;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      padding:8px 12px;
+      border-bottom:1px solid var(--line2);
+      background:#fff;
+    }
+    .deleteConfirmRow.show{
+      display:flex;
+    }
+    .deleteConfirmText{
+      font-size:12px;
+      color:#9a2f2f;
+      line-height:1.2;
+    }
+    .deleteConfirmActions{
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .deleteConfirmBtn{
+      width:22px;
+      height:22px;
+      border:1px solid var(--line);
+      border-radius:6px;
+      background:#fff;
+      color:#444;
+      font-family:var(--sans);
+      font-size:12px;
+      line-height:20px;
+      text-align:center;
+      padding:0;
+      touch-action:manipulation;
+    }
+    .deleteConfirmBtn.ok{
+      border-color:#b7d7bf;
+      color:#2e7d32;
+    }
+    .deleteConfirmBtn.cancel{
+      border-color:#e0b4b4;
+      color:#9a2f2f;
+    }
+    .deleteConfirmBtn:active{
+      background:#f3f6ff;
+    }
+    #mainAddHost{
+      overflow:hidden;
+    }
+    #mainAddHost .inputRow{
+      background:#fff;
+      border-bottom:1px solid var(--line2);
+      padding:8px 10px;
+    }
+    .fileInput{
+      display:none;
+    }
+    .importStatus{
+      max-height:0;
+      overflow:hidden;
+      padding:0 12px;
+      font-size:11px;
+      line-height:1.2;
+      color:var(--muted);
+      border-bottom:0 solid var(--line2);
+      transition:max-height .15s ease, padding .15s ease, border-width .15s ease;
+    }
+    .importStatus.show{
+      max-height:40px;
+      padding:6px 12px;
+      border-bottom:1px solid var(--line2);
+    }
+    .importStatus.error{
+      color:#9a2f2f;
     }
 
     .row{

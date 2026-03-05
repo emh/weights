@@ -4,6 +4,8 @@
 
   let state = {
     workouts: [],
+    screen: "main",
+    mainAddOpen: false,
     expandedWorkoutId: null,
     expandedExerciseId: null,
     exerciseLookup: [],
@@ -12,6 +14,23 @@
   };
 
   const elList = document.getElementById("list");
+  const elImportInput = document.getElementById("csvImportInput");
+  const elImportStatus = document.getElementById("importStatus");
+  const elSettingsBtn = document.getElementById("settingsBtn");
+  const elTitleText = document.querySelector(".titleText");
+  const elAddWorkoutBtn = document.getElementById("addWorkoutBtn");
+  const elBackBtn = document.getElementById("backBtn");
+  const elTitleMenu = document.getElementById("titleMenu");
+  const elMainAddHost = document.getElementById("mainAddHost");
+  const elImportCsvBtn = document.getElementById("importCsvBtn");
+  const elDeleteAllBtn = document.getElementById("deleteAllBtn");
+  const elDeleteConfirmRow = document.getElementById("deleteConfirmRow");
+  const elDeleteConfirmOkBtn = document.getElementById("deleteConfirmOkBtn");
+  const elDeleteConfirmCancelBtn = document.getElementById("deleteConfirmCancelBtn");
+
+  let importStatusTimer = null;
+  let settingsMenuOpen = false;
+  let deleteAllConfirmOpen = false;
 
   // ---------- Utilities ----------
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -125,6 +144,19 @@
         : null;
     }
 
+    if (state.screen !== "workout") {
+      state.screen = "main";
+      state.mainAddOpen = !!state.mainAddOpen;
+      state.expandedWorkoutId = null;
+      state.expandedExerciseId = null;
+    } else {
+      state.mainAddOpen = false;
+      if (!state.expandedWorkoutId) {
+        state.screen = "main";
+        state.expandedExerciseId = null;
+      }
+    }
+
     rebuildExerciseLookup();
     sanitizeCurrent();
   }
@@ -179,6 +211,13 @@
   function coerceCurrentToVisible() {
     if (!state.current) return;
 
+    if (state.screen !== "workout") {
+      if (state.current.kind === "set" || state.current.kind === "exercise") {
+        state.current = { kind:"workout", workoutId: state.current.workoutId };
+      }
+      return;
+    }
+
     if (state.current.kind === "exercise" && state.expandedWorkoutId !== state.current.workoutId) {
       state.current = { kind:"workout", workoutId: state.current.workoutId };
       return;
@@ -198,6 +237,8 @@
     rebuildExerciseLookup();
     localStorage.setItem(LS_KEY, JSON.stringify({
       workouts: state.workouts,
+      screen: state.screen,
+      mainAddOpen: state.mainAddOpen,
       expandedWorkoutId: state.expandedWorkoutId,
       expandedExerciseId: state.expandedExerciseId,
       current: state.current
@@ -214,6 +255,8 @@
         if (!parsed || !Array.isArray(parsed.workouts)) continue;
 
         state.workouts = parsed.workouts;
+        state.screen = parsed.screen === "workout" ? "workout" : "main";
+        state.mainAddOpen = !!parsed.mainAddOpen;
         state.expandedWorkoutId = parsed.expandedWorkoutId ?? null;
         state.expandedExerciseId = parsed.expandedExerciseId ?? null;
         state.current = parsed.current ?? null;
@@ -246,6 +289,260 @@
   function fmtDateDisplay(dateISO) {
     const [y,m,d] = dateISO.split("-");
     return `${y}.${m}.${d}`;
+  }
+  function normalizeExerciseName(raw) {
+    return String(raw || "").trim().replace(/\s+/g, " ");
+  }
+  function cleanSetsSpec(raw) {
+    let s = String(raw || "").trim();
+    if (!s) return "";
+    s = s.replace(/\([^)]*\)/g, " ");
+    s = s.split(/\s+-\s+/)[0];
+    return s.replace(/\s+/g, " ").trim();
+  }
+  function setDeleteAllConfirmOpen(open) {
+    deleteAllConfirmOpen = !!open;
+    if (elDeleteConfirmRow) elDeleteConfirmRow.classList.toggle("show", deleteAllConfirmOpen);
+  }
+  function setSettingsMenuOpen(open) {
+    settingsMenuOpen = !!open;
+    if (elTitleMenu) elTitleMenu.classList.toggle("show", settingsMenuOpen);
+    if (elSettingsBtn) elSettingsBtn.classList.toggle("open", settingsMenuOpen);
+    if (!settingsMenuOpen) setDeleteAllConfirmOpen(false);
+  }
+  function setScreenMain() {
+    state.screen = "main";
+    state.mainAddOpen = false;
+    state.expandedWorkoutId = null;
+    state.expandedExerciseId = null;
+    state.edit = null;
+    setSettingsMenuOpen(false);
+  }
+  function openWorkoutScreen(workoutId) {
+    const workout = findWorkout(workoutId);
+    if (!workout) return false;
+
+    state.screen = "workout";
+    state.mainAddOpen = false;
+    state.expandedWorkoutId = workout.id;
+    state.expandedExerciseId = null;
+    setCurrentWorkout(workout.id);
+    setSettingsMenuOpen(false);
+    return true;
+  }
+  function updateTitleBar(activeWorkout) {
+    const isMain = state.screen !== "workout";
+    if (elTitleText) {
+      elTitleText.textContent = isMain ? "Weights" : (activeWorkout ? fmtDateDisplay(activeWorkout.dateISO) : "Workout");
+    }
+    if (elSettingsBtn) elSettingsBtn.classList.toggle("hidden", !isMain);
+    if (elAddWorkoutBtn) elAddWorkoutBtn.classList.toggle("hidden", !isMain);
+    if (elBackBtn) elBackBtn.classList.toggle("hidden", isMain);
+    if (!isMain) setSettingsMenuOpen(false);
+  }
+  function showImportStatus(message, isError = false) {
+    if (!elImportStatus) return;
+
+    if (importStatusTimer) {
+      clearTimeout(importStatusTimer);
+      importStatusTimer = null;
+    }
+
+    const text = String(message || "").trim();
+    if (!text) {
+      elImportStatus.textContent = "";
+      elImportStatus.classList.remove("show", "error");
+      return;
+    }
+
+    elImportStatus.textContent = text;
+    elImportStatus.classList.add("show");
+    elImportStatus.classList.toggle("error", !!isError);
+    importStatusTimer = setTimeout(() => {
+      elImportStatus.textContent = "";
+      elImportStatus.classList.remove("show", "error");
+      importStatusTimer = null;
+    }, isError ? 5200 : 3600);
+  }
+  function parseCsvRows(text) {
+    const src = String(text || "").replace(/^\uFEFF/, "");
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < src.length; i++) {
+      const ch = src[i];
+
+      if (inQuotes) {
+        if (ch === "\"") {
+          if (src[i + 1] === "\"") {
+            field += "\"";
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+        continue;
+      }
+
+      if (ch === "\"") {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field);
+        field = "";
+      } else if (ch === "\n") {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else if (ch === "\r") {
+        continue;
+      } else {
+        field += ch;
+      }
+    }
+
+    row.push(field);
+    if (row.length > 1 || row[0].trim() !== "") rows.push(row);
+    return rows;
+  }
+  function looksLikeCsvHeader(row) {
+    if (!Array.isArray(row) || !row.length) return false;
+    const c0 = String(row[0] || "").trim().toLowerCase();
+    const c1 = String(row[1] || "").trim().toLowerCase();
+    const c2 = String(row[2] || "").trim().toLowerCase();
+    return c0 === "date" && c1 === "exercise" && (c2.includes("sets") || c2.includes("reps"));
+  }
+  function importCsvText(text) {
+    const rows = parseCsvRows(text);
+    if (!rows.length) {
+      return {
+        importedRows: 0,
+        skippedRows: 0,
+        createdWorkouts: 0,
+        createdExercises: 0,
+        importedSets: 0,
+        focusWorkoutId: null
+      };
+    }
+
+    const startIndex = looksLikeCsvHeader(rows[0]) ? 1 : 0;
+    const workoutByDate = new Map(state.workouts.map(w => [w.dateISO, w]));
+
+    let importedRows = 0;
+    let skippedRows = 0;
+    let createdWorkouts = 0;
+    let createdExercises = 0;
+    let importedSets = 0;
+    let latestDateISO = null;
+
+    for (let i = startIndex; i < rows.length; i++) {
+      const row = rows[i];
+      const dateISO = parseDateToken(row[0]);
+      const exerciseName = normalizeExerciseName(row[1]);
+      const setsSpec = cleanSetsSpec(row[2]);
+
+      if (!dateISO || !exerciseName) {
+        if (row.some(value => String(value || "").trim() !== "")) skippedRows += 1;
+        continue;
+      }
+
+      const key = exerciseName.toLowerCase();
+      const existingWorkout = workoutByDate.get(dateISO) || null;
+      const existingExercise = existingWorkout
+        ? existingWorkout.exercises.find(item => normalizeExerciseName(item.name).toLowerCase() === key) || null
+        : null;
+
+      let parsedSets = [];
+      if (setsSpec) {
+        const prev = existingExercise && existingExercise.sets.length
+          ? existingExercise.sets[existingExercise.sets.length - 1]
+          : null;
+        parsedSets = parseSetsSpec(setsSpec, prev) || [];
+        if (!parsedSets.length) {
+          skippedRows += 1;
+          continue;
+        }
+      }
+
+      let workout = existingWorkout;
+      if (!workout) {
+        workout = { id: uid(), dateISO, exercises: [] };
+        state.workouts.push(workout);
+        workoutByDate.set(dateISO, workout);
+        createdWorkouts += 1;
+      }
+
+      let exercise = existingExercise;
+      if (!exercise) {
+        exercise = { id: uid(), name: exerciseName, sets: [] };
+        workout.exercises.push(exercise);
+        createdExercises += 1;
+      }
+
+      if (parsedSets.length) {
+        exercise.sets.push(...parsedSets);
+        importedSets += parsedSets.length;
+      }
+
+      importedRows += 1;
+      if (!latestDateISO || dateISO > latestDateISO) latestDateISO = dateISO;
+    }
+
+    sortWorkoutsAsc();
+    rebuildExerciseLookup();
+    sanitizeCurrent();
+
+    let focusWorkoutId = null;
+    if (latestDateISO) {
+      const focusWorkout = workoutByDate.get(latestDateISO);
+      if (focusWorkout) focusWorkoutId = focusWorkout.id;
+    }
+
+    return {
+      importedRows,
+      skippedRows,
+      createdWorkouts,
+      createdExercises,
+      importedSets,
+      focusWorkoutId
+    };
+  }
+  async function handleCsvImportInputChange(ev) {
+    const input = ev.target;
+    if (!(input instanceof HTMLInputElement)) return;
+    const file = input.files && input.files[0];
+    if (!file) return;
+    setSettingsMenuOpen(false);
+
+    try {
+      const raw = await file.text();
+      state.edit = null;
+      const result = importCsvText(raw);
+      if (state.screen === "main" && result.focusWorkoutId) {
+        setCurrentWorkout(result.focusWorkoutId);
+      }
+      save();
+      render(result.focusWorkoutId ? { scrollToWorkoutId: result.focusWorkoutId } : undefined);
+
+      if (!result.importedRows) {
+        showImportStatus(`Imported 0 rows (${result.skippedRows} skipped).`, true);
+      } else {
+        const skippedPart = result.skippedRows ? `, ${result.skippedRows} skipped` : "";
+        showImportStatus(
+          `Imported ${result.importedRows} rows, ${result.importedSets} sets${skippedPart}.`,
+          false
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      showImportStatus("Import failed.", true);
+    } finally {
+      input.value = "";
+    }
   }
   function rebuildExerciseLookup() {
     const byKey = new Map();
@@ -576,9 +873,23 @@
     if (state.expandedWorkoutId === workoutId) {
       state.expandedWorkoutId = null;
       state.expandedExerciseId = null;
+      if (state.screen === "workout") {
+        state.screen = "main";
+        state.mainAddOpen = false;
+      }
     }
     if (state.current && state.current.workoutId === workoutId) state.current = null;
     if (state.edit && state.edit.workoutId === workoutId) state.edit = null;
+  }
+  function removeAllWorkouts() {
+    state.workouts = [];
+    state.screen = "main";
+    state.mainAddOpen = false;
+    state.expandedWorkoutId = null;
+    state.expandedExerciseId = null;
+    state.current = null;
+    state.edit = null;
+    rebuildExerciseLookup();
   }
   function removeExercise(workout, exerciseId) {
     workout.exercises = workout.exercises.filter(item => item.id !== exerciseId);
@@ -889,28 +1200,34 @@
     const t = text.trim();
     if (!t) return;
 
-    if (!state.expandedWorkoutId) {
+    if (state.screen !== "workout") {
       const w = parseWorkoutLine(t);
       if (!w) return;
       state.workouts.push(w);
       sortWorkoutsAsc();
-      state.expandedWorkoutId = w.id;
-      state.expandedExerciseId = null;
-      setCurrentWorkout(w.id);
+      state.mainAddOpen = false;
+      openWorkoutScreen(w.id);
       save();
-      render({ scrollToWorkoutId: w.id });
+      render({ scrollBottom:true, focusAddExercise:true });
       return;
     }
 
     const w = findWorkout(state.expandedWorkoutId);
-    if (!w) { state.expandedWorkoutId=null; state.expandedExerciseId=null; render(); return; }
+    if (!w) {
+      setScreenMain();
+      render();
+      return;
+    }
 
     if (!state.expandedExerciseId) {
       const parsed = parseExerciseLine(t);
       if (!parsed) return;
-      w.exercises.push({ id: uid(), name: parsed.name, sets: parsed.sets || [] });
+      const addedExercise = { id: uid(), name: parsed.name, sets: parsed.sets || [] };
+      w.exercises.push(addedExercise);
+      state.expandedExerciseId = addedExercise.id;
+      setCurrentExercise(w.id, addedExercise.id);
       save();
-      render({ scrollBottom:true });
+      render({ scrollBottom:true, focusAddSet:true });
       return;
     }
 
@@ -921,7 +1238,7 @@
     if (!sets || !sets.length) return;
     ex.sets.push(...sets);
     save();
-    render({ scrollBottom:true });
+    render({ scrollBottom:true, focusAddSet:true });
   }
 
   // ---------- Render ----------
@@ -929,30 +1246,38 @@
     sortWorkoutsAsc();
     coerceCurrentToVisible();
     elList.innerHTML = "";
+    if (elMainAddHost) elMainAddHost.innerHTML = "";
 
     let focusTarget = null;
+    let activeWorkout = state.screen === "workout" ? findWorkout(state.expandedWorkoutId) : null;
+    if (state.screen === "workout" && !activeWorkout) {
+      setScreenMain();
+      activeWorkout = null;
+    }
+    updateTitleBar(activeWorkout);
 
-    for (const w of state.workouts) {
-      const isExpandedWorkout = state.expandedWorkoutId === w.id;
+    if (state.screen === "main") {
+      const workoutsDesc = [...state.workouts].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
 
-      const wRow = document.createElement("div");
-      wRow.className = "row";
-      wRow.dataset.workoutId = w.id;
-
-      if (state.edit && state.edit.kind === "workout" && state.edit.workoutId === w.id) {
-        const editor = makeInlineEditor({
-          placeholder: "2026.03.05 or t",
-          value: state.edit.draft,
-          onCommit: commitEdit,
-          onCancel: cancelEdit
+      if (!state.edit && state.mainAddOpen && elMainAddHost) {
+        const add = makeInlineEditor({
+          placeholder: "Date Exercise1, Exercise2, ...",
+          value: "",
+          onCommit: (txt) => commitAdd(txt),
+          onCancel: () => {
+            state.mainAddOpen = false;
+            render();
+          }
         });
-        wRow.appendChild(editor);
-        elList.appendChild(wRow);
-        focusTarget = editor;
-        continue;
+        elMainAddHost.appendChild(add);
+        focusTarget = add;
       }
 
-      if (!isExpandedWorkout) {
+      for (const w of workoutsDesc) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.dataset.workoutId = w.id;
+
         const line = document.createElement("div");
         line.className = "workoutLine";
         const isCurrentWorkoutRow = isCurrentWorkout(w.id);
@@ -964,7 +1289,7 @@
 
         const dow = document.createElement("div");
         dow.className = "dow";
-        dow.textContent = `${dowShort(w.dateISO)}:`;
+        dow.textContent = dowShort(w.dateISO);
 
         const text = document.createElement("div");
         text.className = "workoutText";
@@ -979,67 +1304,41 @@
           line.appendChild(spacer);
           line.appendChild(makeDeleteButton(() => removeWorkout(w.id)));
         }
-        wRow.appendChild(line);
 
-        bindTapHandlers(wRow, {
-          onTap: () => {
-            if (state.edit) return;
-            state.expandedWorkoutId = w.id;
-            state.expandedExerciseId = null;
-            setCurrentWorkout(w.id);
-            save();
-            render();
-          },
-          onDoubleTap: () => {
-            if (state.edit) return;
-            beginEditWorkout(w);
-          }
-        });
-
-        elList.appendChild(wRow);
-        continue;
-      }
-
-      // Expanded workout header line
-      const headerLine = document.createElement("div");
-      headerLine.className = "workoutLine";
-      headerLine.style.paddingBottom = "6px";
-      const isWorkoutCurrent = isCurrentWorkout(w.id);
-      if (isWorkoutCurrent) headerLine.classList.add("currentFocus");
-
-      const date = document.createElement("div");
-      date.className = "date";
-      date.textContent = fmtDateDisplay(w.dateISO);
-
-      const dow = document.createElement("div");
-      dow.className = "dow";
-      dow.textContent = `${dowShort(w.dateISO)}:`;
-
-      headerLine.appendChild(date);
-      headerLine.appendChild(dow);
-      if (isWorkoutCurrent) {
-        const spacer = document.createElement("div");
-        spacer.className = "rowSpacer";
-
-        headerLine.appendChild(spacer);
-        headerLine.appendChild(makeDeleteButton(() => removeWorkout(w.id)));
-      }
-      wRow.appendChild(headerLine);
-
-      bindTapHandlers(headerLine, {
-        onTap: () => {
+        row.appendChild(line);
+        row.addEventListener("pointerup", (ev) => {
+          const target = ev.target instanceof Element ? ev.target : null;
+          if (target && target.closest(".rowDeleteBtn")) return;
           if (state.edit) return;
-          state.expandedWorkoutId = null;
-          state.expandedExerciseId = null;
-          setCurrentWorkout(w.id);
+          ev.preventDefault();
+          ev.stopPropagation();
+          openWorkoutScreen(w.id);
           save();
           render();
-        },
-        onDoubleTap: () => {
-          if (state.edit) return;
-          beginEditWorkout(w);
-        }
-      });
+        }, { passive:false });
+
+        elList.appendChild(row);
+      }
+    } else if (activeWorkout) {
+      const w = activeWorkout;
+
+      if (state.edit && state.edit.kind === "workout" && state.edit.workoutId === w.id) {
+        const editRow = document.createElement("div");
+        editRow.className = "row";
+        const editor = makeInlineEditor({
+          placeholder: "2026.03.05 or t",
+          value: state.edit.draft,
+          onCommit: commitEdit,
+          onCancel: cancelEdit
+        });
+        editRow.appendChild(editor);
+        elList.appendChild(editRow);
+        focusTarget = editor;
+      }
+
+      const wRow = document.createElement("div");
+      wRow.className = "row";
+      wRow.dataset.workoutId = w.id;
 
       for (const ex of w.exercises) {
         const isExpandedEx = state.expandedExerciseId === ex.id;
@@ -1103,7 +1402,6 @@
           const setsBox = document.createElement("div");
           setsBox.className = "setsList";
 
-          // Render sets only if present (no "no sets yet" line)
           ex.sets.forEach((s, idx) => {
             if (state.edit && state.edit.kind === "set" &&
                 state.edit.workoutId === w.id &&
@@ -1156,7 +1454,6 @@
             setsBox.appendChild(setLine);
           });
 
-          // Add-set input (in place)
           if (!state.edit) {
             const add = makeInlineEditor({
               placeholder: "Reps@Weight or 4x6@225",
@@ -1167,6 +1464,7 @@
               clearOnCancel:true
             });
             setsBox.appendChild(add);
+            if (opts.focusAddSet && isExpandedEx) focusTarget = add;
           }
 
           exDiv.appendChild(setsBox);
@@ -1175,7 +1473,6 @@
         wRow.appendChild(exDiv);
       }
 
-      // Add-exercise input when workout expanded but no exercise expanded
       if (!state.edit && !state.expandedExerciseId) {
         const add = makeInlineEditor({
           placeholder: "Exercise...",
@@ -1187,28 +1484,18 @@
           autocompleteExercise:true
         });
         wRow.appendChild(add);
+        if (opts.focusAddExercise) focusTarget = add;
       }
 
       elList.appendChild(wRow);
     }
 
-    // Add-workout input at bottom when collapsed mode
-    if (!state.edit && !state.expandedWorkoutId) {
-      const addRow = document.createElement("div");
-      addRow.className = "row";
-      const add = makeInlineEditor({
-        placeholder: "Date Exercise1, Exercise2, ...",
-        value: "",
-        onCommit: (txt) => commitAdd(txt),
-        onCancel: () => render(),
-        clearOnCancel:true
+    if (focusTarget && (opts.focusEdit || opts.focusAddExercise || opts.focusAddSet)) {
+      queueMicrotask(() => {
+        requestAnimationFrame(() => {
+          if (focusTarget && focusTarget._focus) focusTarget._focus();
+        });
       });
-      addRow.appendChild(add);
-      elList.appendChild(addRow);
-    }
-
-    if (focusTarget && opts.focusEdit) {
-      queueMicrotask(() => focusTarget._focus && focusTarget._focus());
     }
 
     if (opts.scrollBottom) {
@@ -1222,8 +1509,100 @@
     }
   }
 
+  if (elImportInput) {
+    elImportInput.addEventListener("change", handleCsvImportInputChange);
+  }
+  if (elSettingsBtn) {
+    elSettingsBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "main") return;
+      const nextOpen = !settingsMenuOpen;
+      if (nextOpen && state.mainAddOpen) {
+        state.mainAddOpen = false;
+        setSettingsMenuOpen(true);
+        render();
+        return;
+      }
+      setSettingsMenuOpen(nextOpen);
+    });
+  }
+  if (elAddWorkoutBtn) {
+    elAddWorkoutBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "main") return;
+      state.mainAddOpen = !state.mainAddOpen;
+      setSettingsMenuOpen(false);
+      render({ focusEdit: state.mainAddOpen });
+    });
+  }
+  if (elBackBtn) {
+    elBackBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "workout") return;
+      const prevWorkoutId = state.expandedWorkoutId;
+      setScreenMain();
+      if (prevWorkoutId) setCurrentWorkout(prevWorkoutId);
+      save();
+      render(prevWorkoutId ? { scrollToWorkoutId: prevWorkoutId } : undefined);
+    });
+  }
+  if (elImportCsvBtn && elImportInput) {
+    elImportCsvBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "main") return;
+      setDeleteAllConfirmOpen(false);
+      elImportInput.click();
+    });
+  }
+  if (elDeleteAllBtn) {
+    elDeleteAllBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "main") return;
+      setDeleteAllConfirmOpen(true);
+    });
+  }
+  if (elDeleteConfirmOkBtn) {
+    elDeleteConfirmOkBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      removeAllWorkouts();
+      save();
+      render();
+      showImportStatus("Deleted all workouts.");
+      setSettingsMenuOpen(false);
+    });
+  }
+  if (elDeleteConfirmCancelBtn) {
+    elDeleteConfirmCancelBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setDeleteAllConfirmOpen(false);
+    });
+  }
+  document.addEventListener("pointerup", (ev) => {
+    if (!settingsMenuOpen) return;
+    const target = ev.target instanceof Element ? ev.target : null;
+    if (!target) return;
+    if (target.closest(".titleBar")) return;
+    setSettingsMenuOpen(false);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && settingsMenuOpen) {
+      setSettingsMenuOpen(false);
+      return;
+    }
+    if (ev.key === "Escape" && state.screen === "main" && state.mainAddOpen && !state.edit) {
+      state.mainAddOpen = false;
+      render();
+    }
+  });
+
   load();
-  render({ scrollBottom:true });
-  setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 0);
+  render();
 
 })();
