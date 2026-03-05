@@ -7,6 +7,7 @@
     screen: "main",
     mainAddOpen: false,
     historyOpen: false,
+    historyMaxFocus: null,
     historyFilterOpen: false,
     historyFilterWeight: "",
     historyFilterReps: "",
@@ -28,6 +29,7 @@
   const elMainAddHost = document.getElementById("mainAddHost");
   const elImportCsvBtn = document.getElementById("importCsvBtn");
   const elExportCsvBtn = document.getElementById("exportCsvBtn");
+  const elInstallAppBtn = document.getElementById("installAppBtn");
   const elDeleteAllBtn = document.getElementById("deleteAllBtn");
   const elDeleteConfirmRow = document.getElementById("deleteConfirmRow");
   const elDeleteConfirmOkBtn = document.getElementById("deleteConfirmOkBtn");
@@ -46,6 +48,7 @@
   let importStatusTimer = null;
   let settingsMenuOpen = false;
   let deleteAllConfirmOpen = false;
+  let deferredInstallPromptEvent = null;
   const HISTORY_CHEVRON_UP = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m18 15-6-6-6 6"></path>
@@ -466,6 +469,7 @@
     state.screen = "main";
     state.mainAddOpen = false;
     state.historyOpen = false;
+    state.historyMaxFocus = null;
     state.historyFilterOpen = false;
     state.historyFilterWeight = "";
     state.historyFilterReps = "";
@@ -481,6 +485,7 @@
     state.screen = "workout";
     state.mainAddOpen = false;
     state.historyOpen = false;
+    state.historyMaxFocus = null;
     state.historyFilterOpen = false;
     state.historyFilterWeight = "";
     state.historyFilterReps = "";
@@ -523,6 +528,53 @@
       elImportStatus.classList.remove("show", "error");
       importStatusTimer = null;
     }, isError ? 5200 : 3600);
+  }
+  function isStandaloneMode() {
+    const mq = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+    const iosStandalone = window.navigator && window.navigator.standalone;
+    return !!(mq || iosStandalone);
+  }
+  function isIosLikeDevice() {
+    const ua = String(navigator.userAgent || "");
+    if (/iphone|ipad|ipod/i.test(ua)) return true;
+    return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+  function getInstallHelpMessage() {
+    if (isIosLikeDevice()) return "In Safari: Share -> Add to Home Screen.";
+    return "Use your browser menu and choose Install app.";
+  }
+  async function handleInstallAppClick() {
+    if (isStandaloneMode()) {
+      showImportStatus("App is already installed.");
+      return;
+    }
+
+    if (deferredInstallPromptEvent) {
+      const promptEvent = deferredInstallPromptEvent;
+      deferredInstallPromptEvent = null;
+      promptEvent.prompt();
+      try {
+        const choice = await promptEvent.userChoice;
+        if (choice && choice.outcome === "accepted") showImportStatus("Install requested.");
+        else showImportStatus("Install canceled.");
+      } catch {
+        showImportStatus("Install prompt failed.", true);
+      }
+      return;
+    }
+
+    showImportStatus(getInstallHelpMessage());
+  }
+  function registerPwaServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    const isSecureOrigin = location.protocol === "https:" ||
+      location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1";
+    if (!isSecureOrigin) return;
+
+    navigator.serviceWorker.register("./sw.js").catch((err) => {
+      console.error("Service worker registration failed:", err);
+    });
   }
   function parseCsvRows(text) {
     const src = String(text || "").replace(/^\uFEFF/, "");
@@ -1052,8 +1104,8 @@
     return `${split.dateToken}${split.dateSep}${split.prefix}${split.leadingWs}${suggestion}`;
   }
 
-  function summarizeSets(sets) {
-    if (!sets.length) return "";
+  function getSummarizedSetGroups(sets) {
+    if (!Array.isArray(sets) || !sets.length) return [];
 
     const formatMetricValue = (metric, value) => {
       if (metric === "seconds") return `${trimNum(value)}s`;
@@ -1099,7 +1151,16 @@
     }
     groups.push(current);
 
-    return groups.map(group => formatGrouped(group.count, group)).join(" ");
+    return groups.map(group => ({
+      count: group.count,
+      set: group,
+      text: formatGrouped(group.count, group)
+    }));
+  }
+  function summarizeSets(sets) {
+    const groups = getSummarizedSetGroups(sets);
+    if (!groups.length) return "";
+    return groups.map(group => group.text).join(" ");
   }
 
   function formatSetLine(s) {
@@ -1225,11 +1286,24 @@
 
     return true;
   }
-  function getExerciseRepMaxSummary(historyRows) {
-    if (!historyRows || !historyRows.length) return "";
+  function setMatchesRepMaxFocus(set, maxFocus) {
+    if (!set || !maxFocus || typeof set !== "object" || set.invalid) return false;
+    const metricInfo = getSetMetric(set);
+    if (!metricInfo || metricInfo.metric !== "reps") return false;
+    if (!Number.isFinite(set.weight)) return false;
+    if (Number(metricInfo.value) !== Number(maxFocus.reps)) return false;
+
+    const unit = normalizeUnitToken(set.unit || "lb");
+    const focusUnit = normalizeUnitToken(maxFocus.unit || "lb");
+    if (unit !== focusUnit) return false;
+    return Math.abs(Number(set.weight) - Number(maxFocus.weight)) < 1e-9;
+  }
+  function getExerciseRepMaxEntries(historyRows) {
+    if (!historyRows || !historyRows.length) return [];
 
     const maxByReps = new Map();
-    for (const row of historyRows) {
+    for (let rowIndex = 0; rowIndex < historyRows.length; rowIndex++) {
+      const row = historyRows[rowIndex];
       const sets = Array.isArray(row.sets) ? row.sets : [];
       for (const set of sets) {
         if (!set || typeof set !== "object" || set.invalid) continue;
@@ -1245,33 +1319,20 @@
         const comparable = unit === "kg" ? weight * 2.2046226218 : weight;
         const prev = maxByReps.get(reps);
         if (!prev || comparable > prev.comparable) {
-          maxByReps.set(reps, { weight, unit, comparable });
+          maxByReps.set(reps, { reps, weight, unit, comparable, rowIndex });
         }
       }
     }
 
-    if (!maxByReps.size) return "";
-    const preferred = [1, 2, 5];
-    const repsList = [];
-    for (const rep of preferred) {
-      if (maxByReps.has(rep)) repsList.push(rep);
-    }
-    if (repsList.length < 3) {
-      const rest = [...maxByReps.keys()].filter(rep => !repsList.includes(rep)).sort((a, b) => a - b);
-      for (const rep of rest) {
-        repsList.push(rep);
-        if (repsList.length >= 3) break;
-      }
-    }
-    if (!repsList.length) return "";
-
-    const parts = repsList.map((rep) => {
-      const item = maxByReps.get(rep);
-      if (!item) return "";
-      return `${rep}@${trimNum(item.weight)}${item.unit === "kg" ? "kg" : ""}`;
-    }).filter(Boolean);
-    if (!parts.length) return "";
-    return `Maxes: ${parts.join(" ")}`;
+    return [...maxByReps.values()]
+      .sort((a, b) => a.reps - b.reps)
+      .map((item) => ({
+        reps: item.reps,
+        weight: item.weight,
+        unit: item.unit,
+        rowIndex: item.rowIndex,
+        label: `${item.reps}@${trimNum(item.weight)}${item.unit === "kg" ? "kg" : ""}`
+      }));
   }
   function renderHistoryDrawer(activeWorkout) {
     if (!elHistoryDrawer || !elHistoryTab || !elHistoryChevron || !elHistoryList || !elHistoryMeta ||
@@ -1296,6 +1357,7 @@
 
     if (state.screen !== "workout" || !activeWorkout) {
       state.historyOpen = false;
+      state.historyMaxFocus = null;
       state.historyFilterOpen = false;
       state.historyFilterWeight = "";
       state.historyFilterReps = "";
@@ -1306,6 +1368,7 @@
     const currentExercise = getCurrentExerciseForHistory(activeWorkout);
     if (!currentExercise) {
       state.historyOpen = false;
+      state.historyMaxFocus = null;
       state.historyFilterOpen = false;
       state.historyFilterWeight = "";
       state.historyFilterReps = "";
@@ -1337,14 +1400,53 @@
       visibleRows.push({ dateISO: row.dateISO, sets });
     }
 
-    const maxesSummary = getExerciseRepMaxSummary(visibleRows.map(row => ({ sets: row.sets })));
+    const maxEntries = getExerciseRepMaxEntries(visibleRows.map(row => ({ sets: row.sets })));
+    if (state.historyMaxFocus) {
+      const focus = state.historyMaxFocus;
+      const focusRow = visibleRows[focus.rowIndex];
+      const stillVisible = !!focusRow && Array.isArray(focusRow.sets) && focusRow.sets.some(set => setMatchesRepMaxFocus(set, focus));
+      if (!stillVisible) state.historyMaxFocus = null;
+    }
+    const activeMaxFocus = state.historyMaxFocus;
     elHistoryList.innerHTML = "";
-    for (const row of visibleRows) {
-      const summary = summarizeSets(row.sets);
-      if (!summary) continue;
+    for (let rowIndex = 0; rowIndex < visibleRows.length; rowIndex++) {
+      const row = visibleRows[rowIndex];
+      const groups = getSummarizedSetGroups(row.sets);
+      if (!groups.length) continue;
       const line = document.createElement("div");
       line.className = "historyRow";
-      line.textContent = `${fmtDateDisplay(row.dateISO)} ${summary}`;
+      line.dataset.historyRowIndex = String(rowIndex);
+
+      const datePart = document.createElement("span");
+      datePart.className = "historyRowDate";
+      datePart.textContent = fmtDateDisplay(row.dateISO);
+      line.appendChild(datePart);
+      line.appendChild(document.createTextNode(" "));
+
+      const summaryPart = document.createElement("span");
+      summaryPart.className = "historyRowSummary";
+
+      let rowHasMatch = false;
+      for (let i = 0; i < groups.length; i++) {
+        const group = groups[i];
+        if (i > 0) summaryPart.appendChild(document.createTextNode(" "));
+
+        const token = document.createElement("span");
+        token.className = "historySetToken";
+        token.textContent = group.text;
+
+        const isMatch = !!activeMaxFocus &&
+          activeMaxFocus.rowIndex === rowIndex &&
+          setMatchesRepMaxFocus(group.set, activeMaxFocus);
+        if (isMatch) {
+          token.classList.add("historySetTokenMatch");
+          rowHasMatch = true;
+        }
+        summaryPart.appendChild(token);
+      }
+
+      if (rowHasMatch) line.classList.add("historyRowFocus");
+      line.appendChild(summaryPart);
       elHistoryList.appendChild(line);
     }
 
@@ -1369,8 +1471,37 @@
       elHistoryRepsFilterInput.value = state.historyFilterReps;
     }
 
-    elHistoryMeta.textContent = maxesSummary;
-    elHistoryMeta.classList.toggle("show", !!maxesSummary && !!state.historyOpen);
+    elHistoryMeta.innerHTML = "";
+    if (state.historyOpen && maxEntries.length) {
+      const label = document.createElement("span");
+      label.className = "historyMetaLabel";
+      label.textContent = "Maxes:";
+      elHistoryMeta.appendChild(label);
+
+      for (const entry of maxEntries) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "historyMaxBtn";
+        btn.textContent = entry.label;
+        btn.title = `Scroll to ${entry.label}`;
+
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          state.historyMaxFocus = {
+            rowIndex: entry.rowIndex,
+            reps: entry.reps,
+            weight: entry.weight,
+            unit: entry.unit
+          };
+          renderHistoryDrawer(activeWorkout);
+          const target = elHistoryList.querySelector(`[data-history-row-index="${entry.rowIndex}"]`);
+          if (target) target.scrollIntoView({ block:"nearest" });
+        });
+        elHistoryMeta.appendChild(btn);
+      }
+    }
+    elHistoryMeta.classList.toggle("show", !!maxEntries.length && !!state.historyOpen);
   }
 
   function removeWorkout(workoutId) {
@@ -2103,7 +2234,7 @@
       ev.preventDefault();
       ev.stopPropagation();
       const target = ev.target instanceof Element ? ev.target : null;
-      if (target && target.closest(".historyFilterBtn")) return;
+      if (target && (target.closest(".historyFilterBtn") || target.closest(".historyMaxBtn"))) return;
       if (state.screen !== "workout") return;
       const activeWorkout = findWorkout(state.expandedWorkoutId);
       if (!activeWorkout) return;
@@ -2114,6 +2245,8 @@
     });
     elHistoryTab.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") return;
+      const target = ev.target instanceof Element ? ev.target : null;
+      if (target && target.closest("button, input, textarea, select")) return;
       ev.preventDefault();
       elHistoryTab.click();
     });
@@ -2175,6 +2308,16 @@
       showImportStatus(`Exported ${rowCount} rows.`, false);
     });
   }
+  if (elInstallAppBtn) {
+    elInstallAppBtn.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state.screen !== "main") return;
+      setDeleteAllConfirmOpen(false);
+      setSettingsMenuOpen(false);
+      await handleInstallAppClick();
+    });
+  }
   if (elDeleteAllBtn) {
     elDeleteAllBtn.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -2219,6 +2362,16 @@
     }
   });
 
+  window.addEventListener("beforeinstallprompt", (ev) => {
+    ev.preventDefault();
+    deferredInstallPromptEvent = ev;
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPromptEvent = null;
+    showImportStatus("App installed.");
+  });
+
+  registerPwaServiceWorker();
   load();
   render();
 

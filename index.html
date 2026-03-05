@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f8f9fc" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Weights" />
   <title>Weights</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -28,6 +34,7 @@
         <div id="titleMenu" class="titleMenu">
           <button id="importCsvBtn" class="titleMenuBtn" type="button">Import CSV</button>
           <button id="exportCsvBtn" class="titleMenuBtn" type="button">Export CSV</button>
+          <button id="installAppBtn" class="titleMenuBtn" type="button">Install App</button>
           <button id="deleteAllBtn" class="titleMenuBtn danger" type="button">Delete All</button>
           <div id="deleteConfirmRow" class="deleteConfirmRow">
             <span class="deleteConfirmText">Are you sure?</span>

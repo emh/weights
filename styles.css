@@ -128,7 +128,7 @@
       transition:max-height .15s ease, border-width .15s ease;
     }
     .titleMenu.show{
-      max-height:140px;
+      max-height:190px;
       border-top:1px solid var(--line2);
     }
     .titleMenuBtn{
@@ -492,15 +492,44 @@
       display:none;
       font-family:var(--mono);
       font-size:11px;
-      line-height:1.2;
+      line-height:1.25;
       color:#666;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
       max-width:100%;
     }
     .historyDrawer.open .historyMeta.show{
-      display:block;
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:2px 6px;
+    }
+    .historyMetaLabel{
+      color:#666;
+      flex:0 0 auto;
+    }
+    .historyMaxBtn{
+      border:0;
+      background:transparent;
+      color:#355ea8;
+      padding:0;
+      margin:0;
+      font-family:inherit;
+      font-size:inherit;
+      line-height:inherit;
+      text-decoration:none;
+      border-radius:2px;
+      touch-action:manipulation;
+      -webkit-appearance:none;
+      appearance:none;
+    }
+    .historyMaxBtn:active{
+      color:#254986;
+    }
+    .historyMaxBtn:focus-visible{
+      outline:1px solid #b8caef;
+      outline-offset:1px;
     }
     .historyChevron{
       width:16px;
@@ -556,6 +585,8 @@
       display:none;
       gap:6px;
       padding:6px 10px;
+      padding-left:max(10px, env(safe-area-inset-left));
+      padding-right:max(10px, env(safe-area-inset-right));
       border-bottom:1px solid var(--line2);
       background:#fff;
     }
@@ -565,6 +596,7 @@
     .historyFilterBar input[type="text"]{
       flex:1 1 0;
       width:auto;
+      min-width:0;
       border:1px solid var(--line2);
       border-radius:6px;
       padding:6px 8px;
@@ -596,9 +628,23 @@
       padding:6px 10px;
       border-bottom:1px dashed #f0f0f0;
       color:#222;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
+      overflow-wrap:anywhere;
+    }
+    .historyRowDate{
+      color:#666;
+    }
+    .historySetTokenMatch{
+      font-weight:700;
+      color:#1f376e;
+      background:#eaf1ff;
+      border-radius:3px;
+      padding:0 1px;
+    }
+    .historyRowFocus{
+      background:#f7faff;
     }
     .historyRow:last-child{
       border-bottom:none;
@@ -617,10 +663,17 @@
       }
       .historyDrawer{
         left:0;
+        right:0;
         transform:none;
-        width:100vw;
+        width:auto;
         border-left:0;
         border-right:0;
         border-radius:0;
+      }
+      input[type="text"]{
+        font-size:16px;
+      }
+      .historyFilterBar input[type="text"]{
+        font-size:16px;
       }
     }
