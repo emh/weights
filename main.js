@@ -40,6 +40,42 @@
     if (t === "kg" || t === "k") return "kg";
     return "lb";
   }
+  function normalizeLoadLabelToken(raw) {
+    const t = String(raw || "").trim().toLowerCase();
+    if (!t) return null;
+    if (t === "bw" || t === "bodyweight") return null;
+    if (!/^[a-z][a-z0-9_-]{0,23}$/.test(t)) return null;
+    return t;
+  }
+  function parseLoadToken(raw) {
+    const t = String(raw || "").trim().toLowerCase();
+    if (!t) return { weight:null, unit:"lb", loadLabel:null };
+    if (t === "bw" || t === "bodyweight") return { weight:null, unit:"lb", loadLabel:null };
+
+    const m = t.match(/^(\d+(\.\d+)?)([a-zA-Z]{0,3})$/);
+    if (m) {
+      return {
+        weight: Number(m[1]),
+        unit: normalizeUnitToken(m[3] || "lb"),
+        loadLabel: null
+      };
+    }
+
+    const loadLabel = normalizeLoadLabelToken(t);
+    if (!loadLabel) return null;
+    return { weight:null, unit:"lb", loadLabel };
+  }
+  function formatSetLoadSuffix(set, spaced = false) {
+    if (!set || typeof set !== "object") return "";
+    const sep = spaced ? " @ " : "@";
+
+    if (set.weight != null) {
+      return `${sep}${trimNum(set.weight)}${set.unit === "kg" ? "kg" : ""}`;
+    }
+    const loadLabel = normalizeLoadLabelToken(set.loadLabel || "");
+    if (loadLabel) return `${sep}${loadLabel}`;
+    return "";
+  }
   function trimNum(x) {
     const s = String(x);
     if (s.includes(".")) return s.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1");
@@ -56,17 +92,24 @@
     if (t === "ft" || t === "foot" || t === "feet") return "feet";
     return "reps";
   }
-  function buildSet(metric, value, weight = null, unit = "lb") {
+  function buildSet(metric, value, weight = null, unit = "lb", loadLabel = null) {
     const v = Number(value);
     if (!Number.isFinite(v) || v <= 0) return null;
 
     let w = null;
+    let label = normalizeLoadLabelToken(loadLabel || "");
     if (weight != null && weight !== "") {
       const parsedWeight = Number(weight);
-      if (Number.isFinite(parsedWeight) && parsedWeight >= 0) w = parsedWeight;
+      if (Number.isFinite(parsedWeight) && parsedWeight >= 0) {
+        w = parsedWeight;
+        label = null;
+      } else if (!label) {
+        label = normalizeLoadLabelToken(weight);
+      }
     }
 
     const out = { weight: w, unit: normalizeUnitToken(unit || "lb") };
+    if (label) out.loadLabel = label;
     if (metric === "seconds") out.seconds = v;
     else if (metric === "meters") out.meters = v;
     else if (metric === "feet") out.feet = v;
@@ -101,22 +144,22 @@
 
     const reps = Number(rawSet.reps);
     if (Number.isFinite(reps) && reps > 0) {
-      return buildSet("reps", Math.floor(reps), rawSet.weight, rawSet.unit || "lb");
+      return buildSet("reps", Math.floor(reps), rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null);
     }
 
     const seconds = Number(rawSet.seconds);
     if (Number.isFinite(seconds) && seconds > 0) {
-      return buildSet("seconds", seconds, rawSet.weight, rawSet.unit || "lb");
+      return buildSet("seconds", seconds, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null);
     }
 
     const meters = Number(rawSet.meters);
     if (Number.isFinite(meters) && meters > 0) {
-      return buildSet("meters", meters, rawSet.weight, rawSet.unit || "lb");
+      return buildSet("meters", meters, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null);
     }
 
     const feet = Number(rawSet.feet);
     if (Number.isFinite(feet) && feet > 0) {
-      return buildSet("feet", feet, rawSet.weight, rawSet.unit || "lb");
+      return buildSet("feet", feet, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null);
     }
 
     return null;
@@ -634,32 +677,30 @@
 
     // Shorthand: "5@" (or "30s@") reuses previous set's weight/unit.
     const mCarry = s.match(/^(\d+(\.\d+)?)\s*(s|m|ft)?\s*@\s*$/i);
-    if (mCarry && previousSet && previousSet.weight != null) {
+    if (mCarry && previousSet && (previousSet.weight != null || normalizeLoadLabelToken(previousSet.loadLabel || ""))) {
       const carryMetric = getSetMetric(previousSet);
       const metric = mCarry[3]
         ? normalizeMetricToken(mCarry[3])
         : (carryMetric && carryMetric.metric !== "invalid" ? carryMetric.metric : "reps");
       const value = Number(mCarry[1]);
       if (metric === "reps" && !Number.isInteger(value)) return null;
-      return buildSet(metric, value, previousSet.weight, previousSet.unit || "lb");
+      return buildSet(
+        metric,
+        value,
+        previousSet.weight,
+        previousSet.unit || "lb",
+        normalizeLoadLabelToken(previousSet.loadLabel || "")
+      );
     }
 
-    const mWeight = s.match(/^(\d+(\.\d+)?)\s*(s|m|ft)?\s*[@x]\s*(\d+(\.\d+)?)\s*([a-zA-Z]{0,3})$/i);
+    const mWeight = s.match(/^(\d+(\.\d+)?)\s*(s|m|ft)?\s*[@x]\s*([^\s]+)\s*$/i);
     if (mWeight) {
       const metric = mWeight[3] ? normalizeMetricToken(mWeight[3]) : "reps";
       const value = Number(mWeight[1]);
-      const weight = Number(mWeight[4]);
-      const unit = normalizeUnitToken(mWeight[6] || "lb");
+      const load = parseLoadToken(mWeight[4]);
+      if (!load) return null;
       if (metric === "reps" && !Number.isInteger(value)) return null;
-      return buildSet(metric, value, weight, unit);
-    }
-
-    const mBw = s.match(/^(\d+(\.\d+)?)\s*(s|m|ft)?\s*@\s*(bw|bodyweight)$/i);
-    if (mBw) {
-      const metric = mBw[3] ? normalizeMetricToken(mBw[3]) : "reps";
-      const value = Number(mBw[1]);
-      if (metric === "reps" && !Number.isInteger(value)) return null;
-      return buildSet(metric, value, null, "lb");
+      return buildSet(metric, value, load.weight, load.unit, load.loadLabel);
     }
 
     const mValue = s.match(/^(\d+(\.\d+)?)\s*(s|m|ft)?$/i);
@@ -692,16 +733,17 @@
       const metric = carryMetric.metric;
       const carryValue = carryMetric.value;
       const carryWeight = carrySet.weight;
+      const carryLoadLabel = normalizeLoadLabelToken(carrySet.loadLabel || "");
       const carryUnit = carrySet.unit || "lb";
 
-      function makeCarriedValueSet(nextValue, nextWeight) {
+      function makeCarriedValueSet(nextValue, nextWeight, nextLoadLabel = carryLoadLabel) {
         if (metric === "reps" && !Number.isInteger(nextValue)) return null;
-        return buildSet(metric, nextValue, nextWeight, carryUnit);
+        return buildSet(metric, nextValue, nextWeight, carryUnit, nextLoadLabel);
       }
 
       // If there's no carried weight, a bare number can only be the metric value.
       if (carryWeight == null) {
-        const set = makeCarriedValueSet(value, null);
+        const set = makeCarriedValueSet(value, null, carryLoadLabel);
         return set ? [set] : null;
       }
 
@@ -737,16 +779,16 @@
       const part = token.trim();
       if (!part) return null;
 
-      const tokenRepeatWeight = part.match(/^(\d+)\s*x\s*(\d+(\.\d+)?)\s*(s|m|ft)?\s*@\s*(\d+(\.\d+)?)\s*([a-zA-Z]{0,3})$/i);
+      const tokenRepeatWeight = part.match(/^(\d+)\s*x\s*(\d+(\.\d+)?)\s*(s|m|ft)?\s*@\s*([^\s]+)\s*$/i);
       if (tokenRepeatWeight) {
         const count = +tokenRepeatWeight[1];
         const value = Number(tokenRepeatWeight[2]);
         const metric = tokenRepeatWeight[4] ? normalizeMetricToken(tokenRepeatWeight[4]) : "reps";
-        const weight = Number(tokenRepeatWeight[5]);
-        const unit = normalizeUnitToken(tokenRepeatWeight[7] || "lb");
+        const load = parseLoadToken(tokenRepeatWeight[5]);
+        if (!load) return null;
         if (count <= 0) return null;
         if (metric === "reps" && !Number.isInteger(value)) return null;
-        const set = buildSet(metric, value, weight, unit);
+        const set = buildSet(metric, value, load.weight, load.unit, load.loadLabel);
         if (!set) return null;
         return Array.from({length: count}, () => ({ ...set }));
       }
@@ -937,8 +979,7 @@
       if (!metricInfo || metricInfo.metric === "invalid") return String(set.raw || "?");
 
       const base = formatMetricValue(metricInfo.metric, metricInfo.value);
-      if (set.weight == null) return base;
-      return `${base}@${trimNum(set.weight)}${set.unit === "kg" ? "kg" : ""}`;
+      return `${base}${formatSetLoadSuffix(set, false)}`;
     };
     const formatGrouped = (count, set) => {
       if (count <= 1) return formatOne(set);
@@ -959,6 +1000,7 @@
         currentMetric.metric === nextMetric.metric &&
         currentMetric.value === nextMetric.value &&
         next.weight === current.weight &&
+        normalizeLoadLabelToken(next.loadLabel || "") === normalizeLoadLabelToken(current.loadLabel || "") &&
         normalizeUnitToken(next.unit || "lb") === normalizeUnitToken(current.unit || "lb");
       if (same) {
         current.count += 1;
@@ -984,8 +1026,7 @@
         : metricInfo.metric === "feet"
           ? `${trimNum(metricInfo.value)}ft`
         : `${metricInfo.value}`;
-    if (s.weight == null) return value;
-    return `${value} @ ${trimNum(s.weight)}${s.unit === "kg" ? "kg" : ""}`;
+    return `${value}${formatSetLoadSuffix(s, true)}`;
   }
   function formatSetEdit(s) {
     if (s.invalid) return String(s.raw || "");
@@ -999,8 +1040,7 @@
         : metricInfo.metric === "feet"
           ? `${trimNum(metricInfo.value)}ft`
         : `${metricInfo.value}`;
-    if (s.weight == null) return value;
-    return `${value}@${trimNum(s.weight)}${s.unit === "kg" ? "kg" : ""}`;
+    return `${value}${formatSetLoadSuffix(s, false)}`;
   }
 
   function findWorkout(id) { return state.workouts.find(w => w.id === id) || null; }
@@ -1449,7 +1489,7 @@
       if (!state.edit && state.mainAddOpen && elMainAddHost) {
         const add = makeInlineEditor({
           placeholder: "Date Exercise1, Exercise2, ...",
-          value: "",
+          value: `${fmtDateDisplay(todayISO())} `,
           onCommit: (txt) => commitAdd(txt),
           onCancel: () => {
             state.mainAddOpen = false;
