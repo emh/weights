@@ -71,6 +71,12 @@
   const FONT_PT_MIN = 10;
   const FONT_PT_MAX = 24;
   const DEFAULT_THEME_KEY = "parchment";
+  const THEME_KEY_ALIASES = {
+    sage: "sky",
+    clay: "citrus",
+    orange: "citrus",
+    blue: "sky"
+  };
   const THEME_PRESETS = {
     parchment: {
       label: "Parchment",
@@ -104,36 +110,36 @@
         "--focus": "#b8643a"
       }
     },
-    sage: {
-      label: "Sage",
+    citrus: {
+      label: "Citrus",
       vars: {
-        "--bg": "#e8ede5",
-        "--surface": "#f3f7f0",
-        "--surface2": "#e5ece2",
-        "--ink": "#192019",
-        "--muted": "#657064",
-        "--line": "#c3cdc0",
-        "--line2": "#d5ded2",
-        "--bar": "#dee7da",
-        "--accent": "#8f5f2f",
-        "--accent-soft": "#ecdfcf",
-        "--focus": "#8f5f2f"
+        "--bg": "#f5e6d8",
+        "--surface": "#fbf1e8",
+        "--surface2": "#f2e3d5",
+        "--ink": "#2a1b11",
+        "--muted": "#7a5e4d",
+        "--line": "#d8c0ad",
+        "--line2": "#e8d5c6",
+        "--bar": "#eddcca",
+        "--accent": "#d86a2f",
+        "--accent-soft": "#f6dfcd",
+        "--focus": "#d86a2f"
       }
     },
-    clay: {
-      label: "Clay",
+    sky: {
+      label: "Sky",
       vars: {
-        "--bg": "#efe6e0",
-        "--surface": "#f9f3ef",
-        "--surface2": "#eee3dc",
-        "--ink": "#231916",
-        "--muted": "#71635f",
-        "--line": "#d2c4bc",
-        "--line2": "#e2d7d0",
-        "--bar": "#e8ddd6",
-        "--accent": "#b65d44",
-        "--accent-soft": "#f4ded4",
-        "--focus": "#b65d44"
+        "--bg": "#e5edf6",
+        "--surface": "#f1f6fc",
+        "--surface2": "#e0eaf5",
+        "--ink": "#132033",
+        "--muted": "#5f6f84",
+        "--line": "#bccadc",
+        "--line2": "#d3deeb",
+        "--bar": "#d8e4f1",
+        "--accent": "#2f6fb2",
+        "--accent-soft": "#d8e7f8",
+        "--focus": "#2f6fb2"
       }
     },
     midnight: {
@@ -156,6 +162,11 @@
 
   // ---------- Utilities ----------
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
+  function normalizeThemeKey(rawThemeKey) {
+    const t = String(rawThemeKey || "").trim().toLowerCase();
+    const mapped = THEME_KEY_ALIASES[t] || t;
+    return THEME_PRESETS[mapped] ? mapped : DEFAULT_THEME_KEY;
+  }
   function clampFontPt(raw) {
     const n = Number(raw);
     if (!Number.isFinite(n)) return FONT_PT_MIN;
@@ -186,7 +197,7 @@
     });
   }
   function applyTheme() {
-    if (!THEME_PRESETS[state.themeKey]) state.themeKey = DEFAULT_THEME_KEY;
+    state.themeKey = normalizeThemeKey(state.themeKey);
     const preset = getThemePreset(state.themeKey);
     for (const [name, value] of Object.entries(preset.vars)) {
       document.documentElement.style.setProperty(name, value);
@@ -565,7 +576,7 @@
       }
     }
     state.fontSizePt = clampFontPt(state.fontSizePt);
-    state.themeKey = THEME_PRESETS[state.themeKey] ? state.themeKey : DEFAULT_THEME_KEY;
+    state.themeKey = normalizeThemeKey(state.themeKey);
 
     rebuildExerciseLookup();
     sanitizeCurrent();
@@ -673,7 +684,7 @@
         state.mainAddOpen = !!parsed.mainAddOpen;
         state.mainExpandedWorkoutId = parsed.mainExpandedWorkoutId ?? null;
         state.fontSizePt = parsed.fontSizePt ?? state.fontSizePt;
-        state.themeKey = parsed.themeKey ?? state.themeKey;
+        state.themeKey = normalizeThemeKey(parsed.themeKey ?? state.themeKey);
         state.historyOpen = !!parsed.historyOpen;
         state.expandedWorkoutId = parsed.expandedWorkoutId ?? null;
         state.expandedExerciseId = parsed.expandedExerciseId ?? null;
