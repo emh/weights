@@ -10,6 +10,20 @@
       --accent:#c55a2a;
       --accent-soft:#f4e2d8;
       --focus:#c55a2a;
+      --font-scale:1;
+      --font-size-pt:10pt;
+      --control-scale:var(--font-scale);
+      --control-xs:calc(18px * var(--control-scale));
+      --control-sm:calc(22px * var(--control-scale));
+      --control-md:calc(24px * var(--control-scale));
+      --control-lg:calc(34px * var(--control-scale));
+      --icon-xs:calc(11px * var(--control-scale));
+      --icon-sm:calc(12px * var(--control-scale));
+      --icon-md:calc(14px * var(--control-scale));
+      --icon-lg:calc(16px * var(--control-scale));
+      --radius-xs:calc(5px * var(--control-scale));
+      --radius-sm:calc(6px * var(--control-scale));
+      --radius-md:calc(8px * var(--control-scale));
       --mono:"Iosevka SS08", "Input Mono", "Cascadia Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
       --sans:"Avenir Next Condensed", "Avenir Next", "Optima", "Segoe UI", sans-serif;
     }
@@ -65,12 +79,12 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      min-height:40px;
-      padding:8px 40px;
+      min-height:calc(40px * var(--font-scale));
+      padding:calc(8px * var(--font-scale)) calc(40px * var(--font-scale));
     }
     .titleText{
       font-family:var(--mono);
-      font-size:14px;
+      font-size:calc(14px * var(--font-scale));
       line-height:1.2;
       font-weight:600;
       letter-spacing:.55px;
@@ -116,13 +130,13 @@
     }
     .settingsBtn{
       position:absolute;
-      left:8px;
+      left:calc(8px * var(--font-scale));
       top:50%;
       transform:translateY(-50%);
-      width:24px;
-      height:24px;
+      width:var(--control-md);
+      height:var(--control-md);
       border:1px solid var(--line);
-      border-radius:6px;
+      border-radius:var(--radius-sm);
       padding:0;
       background:linear-gradient(180deg, #fff 0%, var(--surface2) 100%);
       color:var(--muted);
@@ -137,8 +151,8 @@
       transition:color .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease;
     }
     .settingsBtn svg{
-      width:16px;
-      height:16px;
+      width:var(--icon-lg);
+      height:var(--icon-lg);
       display:block;
       stroke:currentColor;
     }
@@ -149,13 +163,13 @@
     }
     .titleRightBtn{
       position:absolute;
-      right:8px;
+      right:calc(8px * var(--font-scale));
       top:50%;
       transform:translateY(-50%);
-      width:24px;
-      height:24px;
+      width:var(--control-md);
+      height:var(--control-md);
       border:1px solid var(--line);
-      border-radius:6px;
+      border-radius:var(--radius-sm);
       padding:0;
       background:linear-gradient(180deg, #fff 0%, var(--surface2) 100%);
       color:var(--muted);
@@ -165,7 +179,7 @@
       touch-action:manipulation;
       z-index:2;
       font-family:var(--sans);
-      font-size:20px;
+      font-size:calc(20px * var(--font-scale));
       line-height:1;
       font-weight:400;
       box-shadow:
@@ -174,8 +188,8 @@
       transition:color .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease;
     }
     .titleRightBtn svg{
-      width:16px;
-      height:16px;
+      width:var(--icon-lg);
+      height:var(--icon-lg);
       display:block;
       stroke:currentColor;
     }
@@ -185,7 +199,7 @@
       box-shadow:inset 0 1px 2px rgba(0,0,0,.1);
     }
     #backBtn{
-      left:8px;
+      left:calc(8px * var(--font-scale));
       right:auto;
     }
     .hidden{
@@ -198,7 +212,7 @@
       transition:max-height .18s cubic-bezier(.25,.72,.2,1), border-width .18s ease;
     }
     .titleMenu.show{
-      max-height:190px;
+      max-height:420px;
       border-top:1px solid var(--line2);
     }
     .titleMenuBtn{
@@ -208,7 +222,7 @@
       background:linear-gradient(180deg, #fff 0%, #f4efe7 100%);
       color:var(--ink);
       font-family:var(--sans);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       line-height:1.2;
       text-align:left;
       padding:9px 12px;
@@ -221,6 +235,65 @@
     }
     .titleMenuBtn:active{
       background:linear-gradient(180deg, #f6efe6 0%, #ece3d6 100%);
+    }
+    .settingsGroup{
+      padding:8px 12px 10px;
+      border-bottom:1px solid var(--line2);
+      background:linear-gradient(180deg, #fff 0%, #f4efe7 100%);
+    }
+    .settingsLabel{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      font-family:var(--sans);
+      font-size:calc(12px * var(--font-scale));
+      color:var(--ink);
+      margin-bottom:6px;
+      line-height:1.2;
+    }
+    .settingsValue{
+      font-family:var(--mono);
+      color:var(--muted);
+      font-size:calc(11px * var(--font-scale));
+    }
+    .settingsSlider{
+      width:100%;
+      accent-color:var(--accent);
+      touch-action:manipulation;
+    }
+    .themeOptions{
+      display:flex;
+      gap:7px;
+      flex-wrap:wrap;
+    }
+    .themeOption{
+      width:calc(20px * var(--font-scale));
+      height:calc(20px * var(--font-scale));
+      border-radius:999px;
+      border:1px solid var(--theme-line, var(--line));
+      background:var(--theme-bg, var(--bg));
+      box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--theme-bg, var(--bg)) 70%, var(--theme-ink, var(--ink)) 30%);
+      padding:0;
+      touch-action:manipulation;
+      position:relative;
+    }
+    .themeOption.active{
+      border-color:var(--accent);
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--accent) 55%, #fff 45%),
+        inset 0 0 0 1px color-mix(in srgb, var(--theme-bg, var(--bg)) 70%, var(--theme-ink, var(--ink)) 30%);
+    }
+    .themeOption.active::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:calc(6px * var(--font-scale));
+      height:calc(6px * var(--font-scale));
+      transform:translate(-50%, -50%);
+      border-radius:999px;
+      background:var(--theme-ink, var(--ink));
     }
     .deleteConfirmRow{
       display:none;
@@ -235,25 +308,25 @@
       display:flex;
     }
     .deleteConfirmText{
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       color:#a33d33;
       line-height:1.2;
     }
     .deleteConfirmActions{
       display:flex;
       align-items:center;
-      gap:6px;
+      gap:calc(6px * var(--font-scale));
     }
     .deleteConfirmBtn{
-      width:22px;
-      height:22px;
+      width:var(--control-sm);
+      height:var(--control-sm);
       border:1px solid #cabda9;
-      border-radius:6px;
+      border-radius:var(--radius-sm);
       background:linear-gradient(180deg, #fff 0%, #f4eee6 100%);
       color:#534a3f;
       font-family:var(--sans);
-      font-size:12px;
-      line-height:20px;
+      font-size:calc(12px * var(--font-scale));
+      line-height:calc(var(--control-sm) - 2px);
       text-align:center;
       padding:0;
       touch-action:manipulation;
@@ -293,7 +366,7 @@
       max-height:0;
       overflow:hidden;
       padding:0 12px;
-      font-size:11px;
+      font-size:calc(11px * var(--font-scale));
       line-height:1.2;
       color:var(--muted);
       border-bottom:0 solid var(--line2);
@@ -335,17 +408,17 @@
     }
     .date{
       font-family:var(--mono);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       color:var(--muted);
       flex:0 0 auto;
     }
     .dow{
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       color:var(--muted);
       flex:0 0 auto;
     }
     .workoutText{
-      font-size:12.5px;
+      font-size:calc(12.5px * var(--font-scale));
       color:var(--ink);
       flex:1 1 auto;
       min-width:0;
@@ -360,18 +433,18 @@
     .rowActions{
       display:flex;
       align-items:center;
-      gap:4px;
+      gap:calc(4px * var(--font-scale));
       flex:0 0 auto;
     }
     .rowEditBtn{
       border:1px solid #cbbfac;
-      border-radius:5px;
+      border-radius:var(--radius-xs);
       background:linear-gradient(180deg, #fff 0%, #f3eee5 100%);
       color:#5f564a;
-      width:18px;
-      height:18px;
+      width:var(--control-xs);
+      height:var(--control-xs);
       padding:0;
-      flex:0 0 18px;
+      flex:0 0 var(--control-xs);
       font-family:var(--sans);
       touch-action:manipulation;
       display:inline-flex;
@@ -384,20 +457,20 @@
       transition:background .12s ease, box-shadow .12s ease, color .12s ease;
     }
     .rowEditBtn svg{
-      width:11px;
-      height:11px;
+      width:var(--icon-xs);
+      height:var(--icon-xs);
       display:block;
       stroke:currentColor;
     }
     .rowDeleteBtn{
       border:1px solid #ddb1a6;
-      border-radius:5px;
+      border-radius:var(--radius-xs);
       background:linear-gradient(180deg, #fff 0%, #f4e7e2 100%);
       color:#a33d33;
-      width:18px;
-      height:18px;
+      width:var(--control-xs);
+      height:var(--control-xs);
       padding:0;
-      flex:0 0 18px;
+      flex:0 0 var(--control-xs);
       font-family:var(--sans);
       touch-action:manipulation;
       display:inline-flex;
@@ -410,15 +483,15 @@
       transition:background .12s ease, box-shadow .12s ease, color .12s ease;
     }
     .rowDeleteBtn svg{
-      width:11px;
-      height:11px;
+      width:var(--icon-xs);
+      height:var(--icon-xs);
       display:block;
       stroke:currentColor;
     }
     .rowActionSlot{
-      width:18px;
-      height:18px;
-      flex:0 0 18px;
+      width:var(--control-xs);
+      height:var(--control-xs);
+      flex:0 0 var(--control-xs);
       display:flex;
       align-items:center;
       justify-content:center;
@@ -440,21 +513,21 @@
     }
     .mainWorkoutDetailName{
       font-family:var(--sans);
-      font-size:12.5px;
+      font-size:calc(12.5px * var(--font-scale));
       color:var(--ink);
       flex:0 0 auto;
       white-space:nowrap;
     }
     .mainWorkoutDetailSummary{
       font-family:var(--mono);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       color:var(--muted);
       min-width:0;
       overflow-wrap:anywhere;
     }
 
     .exerciseLine{
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       line-height:1.35;
       color:var(--ink);
       padding:0;
@@ -474,12 +547,12 @@
     .exerciseName{
       font-family:var(--sans);
       font-weight:400;
-      font-size:12.5px;
+      font-size:calc(12.5px * var(--font-scale));
       margin-right:6px;
     }
     .setsSummary{
       font-family:var(--mono);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       color:var(--muted);
     }
     .setsList{
@@ -489,7 +562,7 @@
     }
     .setLine{
       font-family:var(--mono);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       padding:6px 10px;
       border-bottom:1px dashed color-mix(in srgb, var(--line2) 80%, #fff 20%);
       touch-action:manipulation;
@@ -536,7 +609,7 @@
       background:linear-gradient(180deg, #fff 0%, #f4efe6 100%);
       color:#2a251f;
       text-align:left;
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       line-height:1.2;
       padding:7px 9px;
       font-family:var(--sans);
@@ -548,7 +621,7 @@
       border:1px solid #cfc4b3;
       border-radius:8px;
       padding:10px 10px;
-      font-size:14px;
+      font-size:calc(14px * var(--font-scale));
       outline:none;
       background:linear-gradient(180deg, #fff 0%, #faf7f1 100%);
       color:var(--ink);
@@ -561,13 +634,13 @@
       box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
     }
     .btn{
-      width:34px;
-      height:34px;
+      width:var(--control-lg);
+      height:var(--control-lg);
       border:1px solid #cabda9;
-      border-radius:8px;
+      border-radius:var(--radius-md);
       background:linear-gradient(180deg, #fff 0%, #f4ede3 100%);
-      font-size:14px;
-      line-height:32px;
+      font-size:calc(14px * var(--font-scale));
+      line-height:calc(var(--control-lg) - 2px);
       text-align:center;
       user-select:none;
       -webkit-user-select:none;
@@ -614,13 +687,13 @@
       border-bottom:1px solid var(--line2);
       background:var(--bar);
       color:var(--ink);
-      min-height:34px;
-      padding:6px 34px 6px 10px;
+      min-height:calc(34px * var(--font-scale));
+      padding:calc(6px * var(--font-scale)) calc(34px * var(--font-scale)) calc(6px * var(--font-scale)) calc(10px * var(--font-scale));
       position:relative;
       display:flex;
       align-items:center;
       font-family:var(--sans);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       line-height:1.2;
       touch-action:manipulation;
       cursor:pointer;
@@ -630,10 +703,10 @@
     .historyTabActions{
       display:flex;
       align-items:center;
-      gap:4px;
+      gap:calc(4px * var(--font-scale));
       flex:0 0 auto;
       position:absolute;
-      right:10px;
+      right:calc(10px * var(--font-scale));
       top:50%;
       transform:translateY(-50%);
     }
@@ -649,14 +722,14 @@
       width:100%;
     }
     .historyTabLabel{
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       line-height:1.2;
       color:var(--ink);
     }
     .historyMeta{
       display:none;
       font-family:var(--mono);
-      font-size:11px;
+      font-size:calc(11px * var(--font-scale));
       line-height:1.25;
       color:var(--muted);
       white-space:normal;
@@ -697,8 +770,8 @@
       outline-offset:1px;
     }
     .historyChevron{
-      width:16px;
-      height:16px;
+      width:var(--icon-lg);
+      height:var(--icon-lg);
       display:inline-flex;
       align-items:center;
       justify-content:center;
@@ -706,16 +779,16 @@
       flex:0 0 auto;
     }
     .historyChevron svg{
-      width:14px;
-      height:14px;
+      width:var(--icon-md);
+      height:var(--icon-md);
       display:block;
       stroke:currentColor;
     }
     .historyFilterBtn{
-      width:18px;
-      height:18px;
+      width:var(--control-xs);
+      height:var(--control-xs);
       border:1px solid #cec2af;
-      border-radius:5px;
+      border-radius:var(--radius-xs);
       background:linear-gradient(180deg, #fff 0%, #f4ede3 100%);
       color:var(--muted);
       padding:0;
@@ -737,15 +810,15 @@
       background:linear-gradient(180deg, #f6eee4 0%, #e9dfd1 100%);
     }
     .historyFilterIcon{
-      width:12px;
-      height:12px;
+      width:var(--icon-sm);
+      height:var(--icon-sm);
       display:inline-flex;
       align-items:center;
       justify-content:center;
     }
     .historyFilterIcon svg{
-      width:12px;
-      height:12px;
+      width:var(--icon-sm);
+      height:var(--icon-sm);
       display:block;
       stroke:currentColor;
     }
@@ -768,7 +841,7 @@
       border:1px solid #d0c5b4;
       border-radius:6px;
       padding:6px 8px;
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       box-shadow:0 1px 0 rgba(255,255,255,.84) inset;
     }
     .historyFilterBar input[type="text"]:focus{
@@ -791,7 +864,7 @@
     }
     .historyRow{
       font-family:var(--mono);
-      font-size:12px;
+      font-size:calc(12px * var(--font-scale));
       line-height:1.3;
       padding:6px 10px;
       border-bottom:1px dashed color-mix(in srgb, var(--line2) 78%, #fff 22%);
@@ -817,6 +890,49 @@
     .historyRow:last-child{
       border-bottom:none;
     }
+    body[data-theme="midnight"] .settingsBtn,
+    body[data-theme="midnight"] .titleRightBtn,
+    body[data-theme="midnight"] .titleMenuBtn,
+    body[data-theme="midnight"] .settingsGroup,
+    body[data-theme="midnight"] .deleteConfirmRow,
+    body[data-theme="midnight"] #mainAddHost .inputRow,
+    body[data-theme="midnight"] .autocompleteItem,
+    body[data-theme="midnight"] input[type="text"],
+    body[data-theme="midnight"] .btn,
+    body[data-theme="midnight"] .rowEditBtn,
+    body[data-theme="midnight"] .rowDeleteBtn,
+    body[data-theme="midnight"] .deleteConfirmBtn,
+    body[data-theme="midnight"] .historyFilterBtn{
+      background:linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--surface) 88%, #fff 12%) 0%,
+        var(--surface2) 100%
+      );
+      border-color:var(--line);
+      color:var(--ink);
+    }
+    body[data-theme="midnight"] .titleMenuBtn.danger,
+    body[data-theme="midnight"] .deleteConfirmText,
+    body[data-theme="midnight"] .deleteConfirmBtn.cancel,
+    body[data-theme="midnight"] .btn.cancel,
+    body[data-theme="midnight"] .rowDeleteBtn{
+      color:#f4a89b;
+    }
+    body[data-theme="midnight"] .setLine.setInvalid{
+      background:color-mix(in srgb, #b95345 22%, var(--surface) 78%);
+    }
+    body[data-theme="midnight"] .setLine.setInvalid.currentFocus{
+      background:color-mix(in srgb, #bf5e4f 30%, var(--accent-soft) 70%);
+    }
+    body[data-theme="midnight"] .card{
+      border-color:var(--line);
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.05) inset,
+        0 10px 20px rgba(0,0,0,.35);
+    }
+    body[data-theme="midnight"] .titleBar{
+      box-shadow:0 1px 0 rgba(255,255,255,.05) inset;
+    }
 
     @media (max-width: 680px){
       .wrap{
@@ -840,9 +956,9 @@
         border-radius:0;
       }
       input[type="text"]{
-        font-size:16px;
+        font-size:max(16px, calc(16px * var(--font-scale)));
       }
       .historyFilterBar input[type="text"]{
-        font-size:16px;
+        font-size:max(16px, calc(16px * var(--font-scale)));
       }
     }

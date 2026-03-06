@@ -34,7 +34,17 @@
         <div id="titleMenu" class="titleMenu">
           <button id="importCsvBtn" class="titleMenuBtn" type="button">Import CSV</button>
           <button id="exportCsvBtn" class="titleMenuBtn" type="button">Export CSV</button>
-          <button id="installAppBtn" class="titleMenuBtn" type="button">Install App</button>
+          <div class="settingsGroup">
+            <label class="settingsLabel" for="fontSizeSlider">
+              <span>Font Size</span>
+              <span id="fontSizeValue" class="settingsValue">10pt</span>
+            </label>
+            <input id="fontSizeSlider" class="settingsSlider" type="range" min="10" max="24" step="1" value="10" />
+          </div>
+          <div class="settingsGroup">
+            <div class="settingsLabel">Theme Color</div>
+            <div id="themeOptions" class="themeOptions" role="radiogroup" aria-label="Theme color"></div>
+          </div>
           <button id="deleteAllBtn" class="titleMenuBtn danger" type="button">Delete All</button>
           <div id="deleteConfirmRow" class="deleteConfirmRow">
             <span class="deleteConfirmText">Are you sure?</span>

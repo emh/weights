@@ -7,6 +7,8 @@
     screen: "main",
     mainAddOpen: false,
     mainExpandedWorkoutId: null,
+    fontSizePt: 10,
+    themeKey: "parchment",
     historyOpen: false,
     historyMaxFocus: null,
     historyFilterOpen: false,
@@ -30,7 +32,9 @@
   const elMainAddHost = document.getElementById("mainAddHost");
   const elImportCsvBtn = document.getElementById("importCsvBtn");
   const elExportCsvBtn = document.getElementById("exportCsvBtn");
-  const elInstallAppBtn = document.getElementById("installAppBtn");
+  const elFontSizeSlider = document.getElementById("fontSizeSlider");
+  const elFontSizeValue = document.getElementById("fontSizeValue");
+  const elThemeOptions = document.getElementById("themeOptions");
   const elDeleteAllBtn = document.getElementById("deleteAllBtn");
   const elDeleteConfirmRow = document.getElementById("deleteConfirmRow");
   const elDeleteConfirmOkBtn = document.getElementById("deleteConfirmOkBtn");
@@ -49,7 +53,6 @@
   let importStatusTimer = null;
   let settingsMenuOpen = false;
   let deleteAllConfirmOpen = false;
-  let deferredInstallPromptEvent = null;
   const HISTORY_CHEVRON_UP = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m18 15-6-6-6 6"></path>
@@ -65,9 +68,163 @@
       <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path>
     </svg>
   `;
+  const FONT_PT_MIN = 10;
+  const FONT_PT_MAX = 24;
+  const DEFAULT_THEME_KEY = "parchment";
+  const THEME_PRESETS = {
+    parchment: {
+      label: "Parchment",
+      vars: {
+        "--bg": "#f2efe9",
+        "--surface": "#f9f7f2",
+        "--surface2": "#f1ece4",
+        "--ink": "#1a1815",
+        "--muted": "#6c655c",
+        "--line": "#d2cbc0",
+        "--line2": "#e5dfd4",
+        "--bar": "#ece7de",
+        "--accent": "#c55a2a",
+        "--accent-soft": "#f4e2d8",
+        "--focus": "#c55a2a"
+      }
+    },
+    mist: {
+      label: "Mist",
+      vars: {
+        "--bg": "#f4f5f4",
+        "--surface": "#fafbfa",
+        "--surface2": "#f0f2f0",
+        "--ink": "#1d2121",
+        "--muted": "#676e6d",
+        "--line": "#cfd5d4",
+        "--line2": "#dfe4e3",
+        "--bar": "#e8eceb",
+        "--accent": "#b8643a",
+        "--accent-soft": "#f1e2d7",
+        "--focus": "#b8643a"
+      }
+    },
+    sage: {
+      label: "Sage",
+      vars: {
+        "--bg": "#e8ede5",
+        "--surface": "#f3f7f0",
+        "--surface2": "#e5ece2",
+        "--ink": "#192019",
+        "--muted": "#657064",
+        "--line": "#c3cdc0",
+        "--line2": "#d5ded2",
+        "--bar": "#dee7da",
+        "--accent": "#8f5f2f",
+        "--accent-soft": "#ecdfcf",
+        "--focus": "#8f5f2f"
+      }
+    },
+    clay: {
+      label: "Clay",
+      vars: {
+        "--bg": "#efe6e0",
+        "--surface": "#f9f3ef",
+        "--surface2": "#eee3dc",
+        "--ink": "#231916",
+        "--muted": "#71635f",
+        "--line": "#d2c4bc",
+        "--line2": "#e2d7d0",
+        "--bar": "#e8ddd6",
+        "--accent": "#b65d44",
+        "--accent-soft": "#f4ded4",
+        "--focus": "#b65d44"
+      }
+    },
+    midnight: {
+      label: "Midnight",
+      vars: {
+        "--bg": "#121822",
+        "--surface": "#1a2230",
+        "--surface2": "#242f40",
+        "--ink": "#e8edf5",
+        "--muted": "#adb7c7",
+        "--line": "#34455d",
+        "--line2": "#2b3a50",
+        "--bar": "#1e2938",
+        "--accent": "#d78a5f",
+        "--accent-soft": "#2b384a",
+        "--focus": "#d78a5f"
+      }
+    }
+  };
 
   // ---------- Utilities ----------
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
+  function clampFontPt(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return FONT_PT_MIN;
+    return Math.max(FONT_PT_MIN, Math.min(FONT_PT_MAX, Math.round(n)));
+  }
+  function getThemePreset(themeKey) {
+    return THEME_PRESETS[themeKey] || THEME_PRESETS[DEFAULT_THEME_KEY];
+  }
+  function applyFontSize() {
+    const pt = clampFontPt(state.fontSizePt);
+    state.fontSizePt = pt;
+    const scale = pt / FONT_PT_MIN;
+    document.documentElement.style.setProperty("--font-scale", String(scale));
+    document.documentElement.style.setProperty("--font-size-pt", `${pt}pt`);
+    if (elFontSizeSlider && String(elFontSizeSlider.value) !== String(pt)) {
+      elFontSizeSlider.value = String(pt);
+    }
+    if (elFontSizeValue) elFontSizeValue.textContent = `${pt}pt`;
+  }
+  function updateThemeButtons() {
+    if (!elThemeOptions) return;
+    const buttons = elThemeOptions.querySelectorAll(".themeOption");
+    buttons.forEach((btn) => {
+      const key = btn.getAttribute("data-theme-key");
+      const isActive = key === state.themeKey;
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-checked", isActive ? "true" : "false");
+    });
+  }
+  function applyTheme() {
+    if (!THEME_PRESETS[state.themeKey]) state.themeKey = DEFAULT_THEME_KEY;
+    const preset = getThemePreset(state.themeKey);
+    for (const [name, value] of Object.entries(preset.vars)) {
+      document.documentElement.style.setProperty(name, value);
+    }
+    if (document.body) document.body.dataset.theme = state.themeKey;
+    const metaTheme = document.querySelector("meta[name=\"theme-color\"]");
+    if (metaTheme) metaTheme.setAttribute("content", preset.vars["--bar"] || "#ece7de");
+    updateThemeButtons();
+  }
+  function buildThemeOptions() {
+    if (!elThemeOptions) return;
+    elThemeOptions.innerHTML = "";
+    for (const [key, preset] of Object.entries(THEME_PRESETS)) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "themeOption";
+      btn.setAttribute("role", "radio");
+      btn.setAttribute("aria-label", preset.label);
+      btn.setAttribute("title", preset.label);
+      btn.dataset.themeKey = key;
+      btn.style.setProperty("--theme-bg", preset.vars["--bg"]);
+      btn.style.setProperty("--theme-ink", preset.vars["--ink"]);
+      btn.style.setProperty("--theme-line", preset.vars["--line"]);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        state.themeKey = key;
+        applyTheme();
+        save();
+      });
+      elThemeOptions.appendChild(btn);
+    }
+    updateThemeButtons();
+  }
+  function applyAppearance() {
+    applyTheme();
+    applyFontSize();
+  }
 
   function normalizeUnitToken(tok) {
     const t = String(tok || "").trim().toLowerCase();
@@ -407,6 +564,8 @@
         state.expandedExerciseId = null;
       }
     }
+    state.fontSizePt = clampFontPt(state.fontSizePt);
+    state.themeKey = THEME_PRESETS[state.themeKey] ? state.themeKey : DEFAULT_THEME_KEY;
 
     rebuildExerciseLookup();
     sanitizeCurrent();
@@ -491,6 +650,8 @@
       screen: state.screen,
       mainAddOpen: state.mainAddOpen,
       mainExpandedWorkoutId: state.mainExpandedWorkoutId,
+      fontSizePt: state.fontSizePt,
+      themeKey: state.themeKey,
       historyOpen: state.historyOpen,
       expandedWorkoutId: state.expandedWorkoutId,
       expandedExerciseId: state.expandedExerciseId,
@@ -511,6 +672,8 @@
         state.screen = parsed.screen === "workout" ? "workout" : "main";
         state.mainAddOpen = !!parsed.mainAddOpen;
         state.mainExpandedWorkoutId = parsed.mainExpandedWorkoutId ?? null;
+        state.fontSizePt = parsed.fontSizePt ?? state.fontSizePt;
+        state.themeKey = parsed.themeKey ?? state.themeKey;
         state.historyOpen = !!parsed.historyOpen;
         state.expandedWorkoutId = parsed.expandedWorkoutId ?? null;
         state.expandedExerciseId = parsed.expandedExerciseId ?? null;
@@ -629,42 +792,6 @@
       elImportStatus.classList.remove("show", "error");
       importStatusTimer = null;
     }, isError ? 5200 : 3600);
-  }
-  function isStandaloneMode() {
-    const mq = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
-    const iosStandalone = window.navigator && window.navigator.standalone;
-    return !!(mq || iosStandalone);
-  }
-  function isIosLikeDevice() {
-    const ua = String(navigator.userAgent || "");
-    if (/iphone|ipad|ipod/i.test(ua)) return true;
-    return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-  }
-  function getInstallHelpMessage() {
-    if (isIosLikeDevice()) return "In Safari: Share -> Add to Home Screen.";
-    return "Use your browser menu and choose Install app.";
-  }
-  async function handleInstallAppClick() {
-    if (isStandaloneMode()) {
-      showImportStatus("App is already installed.");
-      return;
-    }
-
-    if (deferredInstallPromptEvent) {
-      const promptEvent = deferredInstallPromptEvent;
-      deferredInstallPromptEvent = null;
-      promptEvent.prompt();
-      try {
-        const choice = await promptEvent.userChoice;
-        if (choice && choice.outcome === "accepted") showImportStatus("Install requested.");
-        else showImportStatus("Install canceled.");
-      } catch {
-        showImportStatus("Install prompt failed.", true);
-      }
-      return;
-    }
-
-    showImportStatus(getInstallHelpMessage());
   }
   function registerPwaServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
@@ -2514,14 +2641,11 @@
       showImportStatus(`Exported ${rowCount} rows.`, false);
     });
   }
-  if (elInstallAppBtn) {
-    elInstallAppBtn.addEventListener("click", async (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (state.screen !== "main") return;
-      setDeleteAllConfirmOpen(false);
-      setSettingsMenuOpen(false);
-      await handleInstallAppClick();
+  if (elFontSizeSlider) {
+    elFontSizeSlider.addEventListener("input", () => {
+      state.fontSizePt = clampFontPt(elFontSizeSlider.value);
+      applyFontSize();
+      save();
     });
   }
   if (elDeleteAllBtn) {
@@ -2568,17 +2692,10 @@
     }
   });
 
-  window.addEventListener("beforeinstallprompt", (ev) => {
-    ev.preventDefault();
-    deferredInstallPromptEvent = ev;
-  });
-  window.addEventListener("appinstalled", () => {
-    deferredInstallPromptEvent = null;
-    showImportStatus("App installed.");
-  });
-
   registerPwaServiceWorker();
   load();
+  buildThemeOptions();
+  applyAppearance();
   render();
   requestAnimationFrame(() => {
     setTimeout(() => {
