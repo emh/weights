@@ -799,8 +799,54 @@
       location.hostname === "localhost" ||
       location.hostname === "127.0.0.1";
     if (!isSecureOrigin) return;
+    let swRefreshPending = false;
+    let swRefreshStarted = false;
 
-    navigator.serviceWorker.register("./sw.js").catch((err) => {
+    const requestRefresh = () => {
+      swRefreshPending = true;
+      if (document.visibilityState !== "visible") return;
+      if (swRefreshStarted) return;
+      swRefreshStarted = true;
+      window.location.reload();
+    };
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && swRefreshPending) {
+        requestRefresh();
+      }
+    });
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      requestRefresh();
+    });
+
+    navigator.serviceWorker.register("./sw.js").then((registration) => {
+      const nudgeUpdate = () => {
+        registration.update().catch(() => {});
+      };
+      const activateWaitingWorker = () => {
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type:"SKIP_WAITING" });
+        }
+      };
+
+      activateWaitingWorker();
+      nudgeUpdate();
+
+      registration.addEventListener("updatefound", () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => {
+          if (installing.state === "installed" && navigator.serviceWorker.controller) {
+            activateWaitingWorker();
+          }
+        });
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") nudgeUpdate();
+      });
+    }).catch((err) => {
       console.error("Service worker registration failed:", err);
     });
   }
