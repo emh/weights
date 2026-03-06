@@ -357,14 +357,28 @@
     const out = { weight: w, unit: normalizeUnitToken(unit || "lb") };
     if (expr) out.loadExpr = expr;
     else if (label) out.loadLabel = label;
-    if (metric === "seconds") out.seconds = v;
-    else if (metric === "meters") out.meters = v;
-    else if (metric === "feet") out.feet = v;
-    else {
+    const secondaryRaw = Number(
+      extras && extras.secondary != null
+        ? extras.secondary
+        : extras && extras.repsSecondary != null
+          ? extras.repsSecondary
+          : NaN
+    );
+    const hasSecondary = Number.isFinite(secondaryRaw) && secondaryRaw > 0;
+
+    if (metric === "seconds") {
+      out.seconds = v;
+      if (hasSecondary) out.secondsSecondary = secondaryRaw;
+    } else if (metric === "meters") {
+      out.meters = v;
+      if (hasSecondary) out.metersSecondary = secondaryRaw;
+    } else if (metric === "feet") {
+      out.feet = v;
+      if (hasSecondary) out.feetSecondary = secondaryRaw;
+    } else {
       out.reps = Math.floor(v);
-      const repsSecondary = Number(extras && extras.repsSecondary);
-      if (Number.isInteger(repsSecondary) && repsSecondary > 0) {
-        out.repsSecondary = repsSecondary;
+      if (Number.isInteger(secondaryRaw) && secondaryRaw > 0) {
+        out.repsSecondary = secondaryRaw;
       }
     }
     if (w == null && !out.loadExpr && !out.loadLabel) {
@@ -378,10 +392,13 @@
     if (!token) return null;
 
     if (metric !== "reps") {
-      if (token.includes("/")) return null;
-      const value = Number(token);
-      if (!Number.isFinite(value) || value <= 0) return null;
-      return { value, repsSecondary:null };
+      const m = token.match(/^(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/);
+      if (!m) return null;
+      const primary = Number(m[1]);
+      const secondary = m[2] != null ? Number(m[2]) : null;
+      if (!Number.isFinite(primary) || primary <= 0) return null;
+      if (secondary != null && (!Number.isFinite(secondary) || secondary <= 0)) return null;
+      return { value:primary, repsSecondary:secondary };
     }
 
     const m = token.match(/^(\d+)(?:\/(\d+))?$/);
@@ -410,13 +427,40 @@
     }
 
     const seconds = Number(set.seconds);
-    if (Number.isFinite(seconds) && seconds > 0) return { metric:"seconds", value: seconds };
+    if (Number.isFinite(seconds) && seconds > 0) {
+      const secondaryRaw = Number(set.secondsSecondary);
+      const hasSecondary = Number.isFinite(secondaryRaw) && secondaryRaw > 0;
+      return {
+        metric:"seconds",
+        value: seconds,
+        secondary: hasSecondary ? secondaryRaw : null,
+        display: hasSecondary ? `${trimNum(seconds)}/${trimNum(secondaryRaw)}` : `${trimNum(seconds)}`
+      };
+    }
 
     const meters = Number(set.meters);
-    if (Number.isFinite(meters) && meters > 0) return { metric:"meters", value: meters };
+    if (Number.isFinite(meters) && meters > 0) {
+      const secondaryRaw = Number(set.metersSecondary);
+      const hasSecondary = Number.isFinite(secondaryRaw) && secondaryRaw > 0;
+      return {
+        metric:"meters",
+        value: meters,
+        secondary: hasSecondary ? secondaryRaw : null,
+        display: hasSecondary ? `${trimNum(meters)}/${trimNum(secondaryRaw)}` : `${trimNum(meters)}`
+      };
+    }
 
     const feet = Number(set.feet);
-    if (Number.isFinite(feet) && feet > 0) return { metric:"feet", value: feet };
+    if (Number.isFinite(feet) && feet > 0) {
+      const secondaryRaw = Number(set.feetSecondary);
+      const hasSecondary = Number.isFinite(secondaryRaw) && secondaryRaw > 0;
+      return {
+        metric:"feet",
+        value: feet,
+        secondary: hasSecondary ? secondaryRaw : null,
+        display: hasSecondary ? `${trimNum(feet)}/${trimNum(secondaryRaw)}` : `${trimNum(feet)}`
+      };
+    }
 
     return null;
   }
@@ -437,7 +481,7 @@
         rawSet.unit || "lb",
         rawSet.loadLabel || null,
         {
-          repsSecondary: rawSet.repsSecondary,
+          secondary: rawSet.repsSecondary,
           loadExpr: rawSet.loadExpr || null
         }
       );
@@ -445,17 +489,26 @@
 
     const seconds = Number(rawSet.seconds);
     if (Number.isFinite(seconds) && seconds > 0) {
-      return buildSet("seconds", seconds, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, { loadExpr: rawSet.loadExpr || null });
+      return buildSet("seconds", seconds, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, {
+        secondary: rawSet.secondsSecondary,
+        loadExpr: rawSet.loadExpr || null
+      });
     }
 
     const meters = Number(rawSet.meters);
     if (Number.isFinite(meters) && meters > 0) {
-      return buildSet("meters", meters, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, { loadExpr: rawSet.loadExpr || null });
+      return buildSet("meters", meters, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, {
+        secondary: rawSet.metersSecondary,
+        loadExpr: rawSet.loadExpr || null
+      });
     }
 
     const feet = Number(rawSet.feet);
     if (Number.isFinite(feet) && feet > 0) {
-      return buildSet("feet", feet, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, { loadExpr: rawSet.loadExpr || null });
+      return buildSet("feet", feet, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, {
+        secondary: rawSet.feetSecondary,
+        loadExpr: rawSet.loadExpr || null
+      });
     }
 
     return null;
@@ -1403,10 +1456,14 @@
   function getSummarizedSetGroups(sets) {
     if (!Array.isArray(sets) || !sets.length) return [];
 
-    const formatMetricValue = (metric, value) => {
-      if (metric === "seconds") return `${trimNum(value)}s`;
-      if (metric === "meters") return `${trimNum(value)}m`;
-      if (metric === "feet") return `${trimNum(value)}ft`;
+    const formatMetricValue = (metric, value, secondary = null) => {
+      const hasSecondary = Number.isFinite(Number(secondary)) && Number(secondary) > 0;
+      const base = hasSecondary
+        ? `${trimNum(value)}/${trimNum(Number(secondary))}`
+        : `${trimNum(value)}`;
+      if (metric === "seconds") return `${base}s`;
+      if (metric === "meters") return `${base}m`;
+      if (metric === "feet") return `${base}ft`;
       return `${value}`;
     };
     const formatOne = (set) => {
@@ -1416,7 +1473,7 @@
 
       const base = metricInfo.metric === "reps"
         ? (metricInfo.display || `${metricInfo.value}`)
-        : formatMetricValue(metricInfo.metric, metricInfo.value);
+        : formatMetricValue(metricInfo.metric, metricInfo.value, metricInfo.secondary);
       return `${base}${formatSetLoadSuffix(set, false)}`;
     };
     const formatGrouped = (count, set) => {
@@ -1469,12 +1526,12 @@
     if (!metricInfo || metricInfo.metric === "invalid") return String(s.raw || "?");
 
     const value = metricInfo.metric === "seconds"
-      ? `${trimNum(metricInfo.value)}s`
+      ? `${metricInfo.display || trimNum(metricInfo.value)}s`
       : metricInfo.metric === "meters"
-        ? `${trimNum(metricInfo.value)}m`
+        ? `${metricInfo.display || trimNum(metricInfo.value)}m`
         : metricInfo.metric === "feet"
-          ? `${trimNum(metricInfo.value)}ft`
-        : (metricInfo.display || `${metricInfo.value}`);
+          ? `${metricInfo.display || trimNum(metricInfo.value)}ft`
+          : (metricInfo.display || `${metricInfo.value}`);
     return `${value}${formatSetLoadSuffix(s, true)}`;
   }
   function formatSetEdit(s) {
@@ -1483,12 +1540,12 @@
     if (!metricInfo || metricInfo.metric === "invalid") return String(s.raw || "");
 
     const value = metricInfo.metric === "seconds"
-      ? `${trimNum(metricInfo.value)}s`
+      ? `${metricInfo.display || trimNum(metricInfo.value)}s`
       : metricInfo.metric === "meters"
-        ? `${trimNum(metricInfo.value)}m`
+        ? `${metricInfo.display || trimNum(metricInfo.value)}m`
         : metricInfo.metric === "feet"
-          ? `${trimNum(metricInfo.value)}ft`
-        : (metricInfo.display || `${metricInfo.value}`);
+          ? `${metricInfo.display || trimNum(metricInfo.value)}ft`
+          : (metricInfo.display || `${metricInfo.value}`);
     return `${value}${formatSetLoadSuffix(s, false)}`;
   }
 
@@ -2007,25 +2064,47 @@
     cancel.title = clearOnCancel ? "Clear" : "Cancel";
 
     let autocompleteList = null;
+    let autocompleteItems = [];
+    let autocompleteActiveIndex = -1;
     const autocompleteEnabled = autocompleteExercise || autocompleteWorkout;
     const getSuggestions = autocompleteWorkout ? getWorkoutAutocompleteSuggestions : getExerciseAutocompleteSuggestions;
     const applySuggestion = autocompleteWorkout ? applyWorkoutAutocompleteSelection : applyExerciseAutocompleteSelection;
 
+    function setAutocompleteActive(nextIndex) {
+      autocompleteActiveIndex = nextIndex;
+      for (let i = 0; i < autocompleteItems.length; i++) {
+        autocompleteItems[i].classList.toggle("isActive", i === autocompleteActiveIndex);
+      }
+    }
+    function applyAutocompleteSuggestion(suggestion) {
+      input.value = applySuggestion(input.value, suggestion);
+      renderAutocomplete();
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
     function hideAutocomplete() {
       if (!autocompleteList) return;
       autocompleteList.innerHTML = "";
+      autocompleteItems = [];
+      autocompleteActiveIndex = -1;
       autocompleteList.classList.remove("show");
     }
     function renderAutocomplete() {
       if (!autocompleteList) return;
 
       const suggestions = getSuggestions(input.value);
+      const activeSuggestion = autocompleteActiveIndex >= 0 && autocompleteActiveIndex < autocompleteItems.length
+        ? autocompleteItems[autocompleteActiveIndex].textContent
+        : "";
       autocompleteList.innerHTML = "";
+      autocompleteItems = [];
+      autocompleteActiveIndex = -1;
       if (!suggestions.length) {
         autocompleteList.classList.remove("show");
         return;
       }
 
+      let restoredIndex = -1;
       for (const suggestion of suggestions) {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -2038,15 +2117,17 @@
         btn.addEventListener("pointerup", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          input.value = applySuggestion(input.value, suggestion);
-          renderAutocomplete();
-          input.focus();
-          input.setSelectionRange(input.value.length, input.value.length);
+          applyAutocompleteSuggestion(suggestion);
         }, { passive:false });
         autocompleteList.appendChild(btn);
+        autocompleteItems.push(btn);
+        if (activeSuggestion && suggestion === activeSuggestion && restoredIndex < 0) {
+          restoredIndex = autocompleteItems.length - 1;
+        }
       }
 
       autocompleteList.classList.add("show");
+      if (restoredIndex >= 0) setAutocompleteActive(restoredIndex);
     }
 
     ok.addEventListener("pointerup", (e) => { e.preventDefault(); onCommit(input.value); }, { passive:false });
@@ -2066,7 +2147,34 @@
     }, { passive:false });
 
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); onCommit(input.value); }
+      const hasAutocomplete = autocompleteEnabled &&
+        autocompleteList &&
+        autocompleteList.classList.contains("show") &&
+        autocompleteItems.length > 0;
+
+      if (hasAutocomplete && e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = autocompleteActiveIndex < autocompleteItems.length - 1 ? autocompleteActiveIndex + 1 : 0;
+        setAutocompleteActive(next);
+        return;
+      }
+      if (hasAutocomplete && e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = autocompleteActiveIndex > 0 ? autocompleteActiveIndex - 1 : autocompleteItems.length - 1;
+        setAutocompleteActive(next);
+        return;
+      }
+
+      if (e.key === "Enter") {
+        if (hasAutocomplete && autocompleteActiveIndex >= 0) {
+          e.preventDefault();
+          const activeBtn = autocompleteItems[autocompleteActiveIndex];
+          if (activeBtn) applyAutocompleteSuggestion(activeBtn.textContent || "");
+          return;
+        }
+        e.preventDefault();
+        onCommit(input.value);
+      }
       else if (e.key === "Escape") {
         e.preventDefault();
         if (autocompleteEnabled && autocompleteList && autocompleteList.classList.contains("show")) {
