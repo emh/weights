@@ -462,6 +462,34 @@
       display:block;
       stroke:currentColor;
     }
+    .rowSelect{
+      border:1px solid #cbbfac;
+      border-radius:var(--radius-xs);
+      background:linear-gradient(180deg, #fff 0%, #f3eee5 100%);
+      color:#5f564a;
+      height:var(--control-xs);
+      min-width:calc(54px * var(--font-scale));
+      padding:0 calc(16px * var(--font-scale)) 0 calc(8px * var(--font-scale));
+      flex:0 0 auto;
+      font-family:var(--sans);
+      font-size:calc(11px * var(--font-scale));
+      line-height:1;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.86) inset,
+        0 1px 2px rgba(0,0,0,.05);
+      transition:border-color .12s ease, box-shadow .12s ease, color .12s ease;
+    }
+    .rowSelect:focus{
+      outline:none;
+      border-color:var(--focus);
+      box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent),
+        0 1px 0 rgba(255,255,255,.86) inset,
+        0 1px 2px rgba(0,0,0,.05);
+    }
+    .rowRpeSelect{
+      min-width:calc(58px * var(--font-scale));
+    }
     .rowDeleteBtn{
       border:1px solid #ddb1a6;
       border-radius:var(--radius-xs);
@@ -579,6 +607,16 @@
     }
     .setLine:last-child{ border-bottom:none; }
     .setValue{ min-width:0; }
+    .setMeta{
+      font-family:var(--sans);
+      font-size:calc(11px * var(--font-scale));
+      color:var(--muted);
+      white-space:nowrap;
+      flex:0 0 auto;
+    }
+    .setRpe{
+      text-align:right;
+    }
 
     .inputRow{
       display:flex;
@@ -918,6 +956,7 @@
     body[data-theme="midnight"] .autocompleteList,
     body[data-theme="midnight"] input[type="text"],
     body[data-theme="midnight"] .btn,
+    body[data-theme="midnight"] .rowSelect,
     body[data-theme="midnight"] .rowEditBtn,
     body[data-theme="midnight"] .rowDeleteBtn,
     body[data-theme="midnight"] .deleteConfirmBtn,
@@ -929,6 +968,13 @@
       );
       border-color:var(--line);
       color:var(--ink);
+    }
+    body[data-theme="midnight"] .rowSelect:focus{
+      border-color:var(--focus);
+      box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent),
+        0 1px 0 rgba(255,255,255,.05) inset,
+        0 1px 2px rgba(0,0,0,.08);
     }
     body[data-theme="midnight"] .autocompleteItem{
       background:transparent;

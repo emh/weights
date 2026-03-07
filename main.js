@@ -325,9 +325,21 @@
     if (s.includes(".")) return s.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1");
     return s;
   }
-  function makeInvalidSet(raw) {
+  function normalizeRpeValue(raw) {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 10) return null;
+    return n;
+  }
+  function applySetRpe(set, rawRpe) {
+    if (!set || typeof set !== "object") return set;
+    const rpe = normalizeRpeValue(rawRpe);
+    if (rpe == null) delete set.rpe;
+    else set.rpe = rpe;
+    return set;
+  }
+  function makeInvalidSet(raw, extras = null) {
     const t = String(raw || "").trim();
-    return { invalid:true, raw:t || "?" };
+    return applySetRpe({ invalid:true, raw:t || "?" }, extras && extras.rpe);
   }
   function normalizeMetricToken(raw) {
     const t = String(raw || "").trim().toLowerCase();
@@ -385,7 +397,7 @@
       const fallbackExpr = normalizeLoadExprToken(weight);
       if (fallbackExpr) out.loadExpr = fallbackExpr;
     }
-    return out;
+    return applySetRpe(out, extras && extras.rpe);
   }
   function parseSetValueToken(metric, rawValueToken) {
     const token = String(rawValueToken || "").trim();
@@ -469,7 +481,7 @@
 
     if (rawSet.invalid || rawSet.kind === "invalid") {
       const raw = String(rawSet.raw || "").trim();
-      return raw ? { invalid:true, raw } : null;
+      return raw ? makeInvalidSet(raw, { rpe: rawSet.rpe }) : null;
     }
 
     const reps = Number(rawSet.reps);
@@ -482,7 +494,8 @@
         rawSet.loadLabel || null,
         {
           secondary: rawSet.repsSecondary,
-          loadExpr: rawSet.loadExpr || null
+          loadExpr: rawSet.loadExpr || null,
+          rpe: rawSet.rpe
         }
       );
     }
@@ -491,7 +504,8 @@
     if (Number.isFinite(seconds) && seconds > 0) {
       return buildSet("seconds", seconds, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, {
         secondary: rawSet.secondsSecondary,
-        loadExpr: rawSet.loadExpr || null
+        loadExpr: rawSet.loadExpr || null,
+        rpe: rawSet.rpe
       });
     }
 
@@ -499,7 +513,8 @@
     if (Number.isFinite(meters) && meters > 0) {
       return buildSet("meters", meters, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, {
         secondary: rawSet.metersSecondary,
-        loadExpr: rawSet.loadExpr || null
+        loadExpr: rawSet.loadExpr || null,
+        rpe: rawSet.rpe
       });
     }
 
@@ -507,7 +522,8 @@
     if (Number.isFinite(feet) && feet > 0) {
       return buildSet("feet", feet, rawSet.weight, rawSet.unit || "lb", rawSet.loadLabel || null, {
         secondary: rawSet.feetSecondary,
-        loadExpr: rawSet.loadExpr || null
+        loadExpr: rawSet.loadExpr || null,
+        rpe: rawSet.rpe
       });
     }
 
@@ -1548,6 +1564,10 @@
           : (metricInfo.display || `${metricInfo.value}`);
     return `${value}${formatSetLoadSuffix(s, false)}`;
   }
+  function formatSetRpeLabel(set) {
+    const rpe = normalizeRpeValue(set && set.rpe);
+    return rpe == null ? "" : `RPE: ${rpe}`;
+  }
 
   function findWorkout(id) { return state.workouts.find(w => w.id === id) || null; }
   function findExercise(w, exId) { return w.exercises.find(e => e.id === exId) || null; }
@@ -1559,6 +1579,14 @@
   }
   function setCurrentSet(workoutId, exerciseId, setIndex) {
     state.current = { kind:"set", workoutId, exerciseId, setIndex };
+  }
+  function setSetRpe(exercise, setIndex, rawRpe) {
+    if (!exercise || !Array.isArray(exercise.sets)) return false;
+    if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= exercise.sets.length) return false;
+    const set = exercise.sets[setIndex];
+    if (!set || typeof set !== "object") return false;
+    applySetRpe(set, rawRpe);
+    return true;
   }
   function isCurrentWorkout(workoutId) {
     return !!state.current && state.current.kind === "workout" && state.current.workoutId === workoutId;
@@ -1994,6 +2022,32 @@
     }, { passive:false });
     return editBtn;
   }
+  function makeRpeSelect(set, onChange) {
+    const select = document.createElement("select");
+    select.className = "rowSelect rowRpeSelect";
+    select.setAttribute("aria-label", "RPE");
+    select.setAttribute("title", "RPE");
+
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "RPE";
+    select.appendChild(blank);
+
+    for (let i = 1; i <= 10; i++) {
+      const option = document.createElement("option");
+      option.value = String(i);
+      option.textContent = String(i);
+      select.appendChild(option);
+    }
+
+    const rpe = normalizeRpeValue(set && set.rpe);
+    select.value = rpe == null ? "" : String(rpe);
+    select.addEventListener("change", (ev) => {
+      ev.stopPropagation();
+      onChange(select.value);
+    });
+    return select;
+  }
 
   // ---------- Tap / Double-tap ----------
   function bindTapHandlers(node, { onTap, onDoubleTap }) {
@@ -2008,6 +2062,10 @@
 
       ev.preventDefault();
       ev.stopPropagation();
+      if (!onDoubleTap) {
+        onTap && onTap(ev);
+        return;
+      }
       const now = Date.now();
       const delta = now - lastTapTime;
 
@@ -2291,7 +2349,9 @@
       const parsed = parseExerciseLine(t);
       if (!parsed) return;
       ex.name = parsed.name;
-      if (parsed.sets && parsed.sets.length) ex.sets = parsed.sets;
+      if (parsed.sets && parsed.sets.length) {
+        ex.sets = parsed.sets.map((set, idx) => applySetRpe(set, ex.sets[idx] ? ex.sets[idx].rpe : null));
+      }
       state.edit = null;
       save();
       render();
@@ -2314,7 +2374,9 @@
 
       if (!t) return;
       const prev = idx > 0 ? ex.sets[idx - 1] : null;
+      const existingRpe = ex.sets[idx] ? ex.sets[idx].rpe : null;
       const set = parseSingleSet(t, prev) || makeInvalidSet(t);
+      applySetRpe(set, existingRpe);
       ex.sets[idx] = set;
       state.edit = null;
       save();
@@ -2556,9 +2618,13 @@
         if (isCurrentExerciseRow) {
           const spacer = document.createElement("div");
           spacer.className = "rowSpacer";
+          const actions = document.createElement("div");
+          actions.className = "rowActions";
+          actions.appendChild(makeEditButton(() => beginEditExercise(w, ex)));
+          actions.appendChild(makeDeleteButton(() => removeExercise(w, ex.id), { focusAddExercise:true }));
 
           top.appendChild(spacer);
-          top.appendChild(makeDeleteButton(() => removeExercise(w, ex.id), { focusAddExercise:true }));
+          top.appendChild(actions);
         }
         exDiv.appendChild(top);
 
@@ -2580,10 +2646,6 @@
             }
             save();
             render(wasExpanded ? { focusAddExercise:true } : { focusAddSet:true });
-          },
-          onDoubleTap: () => {
-            if (state.edit) return;
-            beginEditExercise(w, ex);
           }
         });
 
@@ -2623,10 +2685,25 @@
             spacer.className = "rowSpacer";
             setLine.appendChild(spacer);
 
-            const actionSlot = document.createElement("span");
-            actionSlot.className = "rowActionSlot";
-            if (isCurrentSetRow) actionSlot.appendChild(makeDeleteButton(() => removeSet(w, ex, idx)));
-            setLine.appendChild(actionSlot);
+            if (isCurrentSetRow) {
+              const actions = document.createElement("div");
+              actions.className = "rowActions";
+              actions.appendChild(makeRpeSelect(s, (rawRpe) => {
+                if (!setSetRpe(ex, idx, rawRpe)) return;
+                save();
+              }));
+              actions.appendChild(makeEditButton(() => beginEditSet(w, ex, idx)));
+              actions.appendChild(makeDeleteButton(() => removeSet(w, ex, idx)));
+              setLine.appendChild(actions);
+            } else {
+              const rpeLabel = formatSetRpeLabel(s);
+              if (rpeLabel) {
+                const meta = document.createElement("span");
+                meta.className = "setMeta setRpe";
+                meta.textContent = rpeLabel;
+                setLine.appendChild(meta);
+              }
+            }
 
             bindTapHandlers(setLine, {
               onTap: () => {
@@ -2634,10 +2711,6 @@
                 setCurrentSet(w.id, ex.id, idx);
                 save();
                 render();
-              },
-              onDoubleTap: () => {
-                if (state.edit) return;
-                beginEditSet(w, ex, idx);
               }
             });
 
