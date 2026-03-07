@@ -696,13 +696,18 @@
       state.current = { kind:"workout", workoutId: state.current.workoutId };
       return;
     }
+    if (state.current.kind === "exercise" && state.expandedExerciseId !== state.current.exerciseId) {
+      state.current = { kind:"workout", workoutId: state.current.workoutId };
+      return;
+    }
     if (state.current.kind === "set") {
       if (state.expandedWorkoutId !== state.current.workoutId) {
         state.current = { kind:"workout", workoutId: state.current.workoutId };
         return;
       }
       if (state.expandedExerciseId !== state.current.exerciseId) {
-        state.current = { kind:"exercise", workoutId: state.current.workoutId, exerciseId: state.current.exerciseId };
+        state.current = { kind:"workout", workoutId: state.current.workoutId };
+        return;
       }
     }
   }
@@ -1946,7 +1951,7 @@
       }
     }
   }
-  function makeDeleteButton(onDelete) {
+  function makeDeleteButton(onDelete, renderOpts) {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "rowDeleteBtn";
@@ -1965,7 +1970,7 @@
       if (state.edit) return;
       onDelete();
       save();
-      render();
+      render(renderOpts);
     }, { passive:false });
     return deleteBtn;
   }
@@ -2279,7 +2284,7 @@
         removeExercise(w, ex.id);
         state.edit = null;
         save();
-        render();
+        render({ focusAddExercise:true });
         return;
       }
 
@@ -2329,6 +2334,14 @@
       sortWorkoutsAsc();
       state.mainAddOpen = false;
       openWorkoutScreen(w.id);
+      if (w.exercises.length) {
+        const firstExercise = w.exercises[0];
+        state.expandedExerciseId = firstExercise.id;
+        setCurrentExercise(w.id, firstExercise.id);
+        save();
+        render({ scrollBottom:true, focusAddSet:true });
+        return;
+      }
       save();
       render({ scrollBottom:true, focusAddExercise:true });
       return;
@@ -2346,6 +2359,12 @@
       if (!parsed) return;
       const addedExercise = { id: uid(), name: parsed.name, sets: parsed.sets || [] };
       w.exercises.push(addedExercise);
+      if (addedExercise.sets.length) {
+        setCurrentWorkout(w.id);
+        save();
+        render({ scrollBottom:true, focusAddExercise:true });
+        return;
+      }
       state.expandedExerciseId = addedExercise.id;
       setCurrentExercise(w.id, addedExercise.id);
       save();
@@ -2539,7 +2558,7 @@
           spacer.className = "rowSpacer";
 
           top.appendChild(spacer);
-          top.appendChild(makeDeleteButton(() => removeExercise(w, ex.id)));
+          top.appendChild(makeDeleteButton(() => removeExercise(w, ex.id), { focusAddExercise:true }));
         }
         exDiv.appendChild(top);
 
@@ -2632,7 +2651,7 @@
               onCommit: (txt) => commitAdd(txt),
               onCancel: () => {
                 state.expandedExerciseId = null;
-                setCurrentExercise(w.id, ex.id);
+                setCurrentWorkout(w.id);
                 save();
                 render({ focusAddExercise:true });
               },
