@@ -2025,6 +2025,7 @@
   function makeRpeSelect(set, onChange) {
     const select = document.createElement("select");
     select.className = "rowSelect rowRpeSelect";
+    select.name = "set-rpe";
     select.setAttribute("aria-label", "RPE");
     select.setAttribute("title", "RPE");
 
@@ -2105,6 +2106,9 @@
 
     const input = document.createElement("input");
     input.type = "text";
+    input.name = autocompleteWorkout
+      ? "workout-entry"
+      : (autocompleteExercise ? "exercise-entry" : "set-entry");
     input.autocomplete = "off";
     input.autocapitalize = "sentences";
     input.spellcheck = false;
