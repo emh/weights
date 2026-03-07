@@ -1367,35 +1367,18 @@
     if (best) return { name: best.name, sets: best.sets };
     return { name: s, sets: [] };
   }
-  function splitExerciseDraftForAutocomplete(raw) {
-    const s = String(raw || "").trim();
-    if (!s) return { namePart: "", suffixPart: "" };
-
-    const parts = s.split(/\s+/);
-    let best = null;
-
-    if (parts.length >= 2) {
-      for (let cut = parts.length - 1; cut >= 1; cut--) {
-        const name = parts.slice(0, cut).join(" ").trim();
-        if (!name) continue;
-        const spec = parts.slice(cut).join(" ");
-        const sets = parseSetsSpec(spec);
-        if (!sets || !sets.length) continue;
-
-        if (!best ||
-            sets.length > best.setsLen ||
-            (sets.length === best.setsLen && spec.length > best.specLen)) {
-          best = { namePart: name, suffixPart: spec, setsLen: sets.length, specLen: spec.length };
-        }
-      }
-    }
-
-    if (best) return { namePart: best.namePart, suffixPart: best.suffixPart };
-    return { namePart: s, suffixPart: "" };
+  function normalizeAutocompleteSelection(rawInput, selectionStart, selectionEnd) {
+    const s = String(rawInput || "");
+    const max = s.length;
+    const startValue = Number(selectionStart);
+    const start = Number.isFinite(startValue) ? Math.min(Math.max(startValue, 0), max) : max;
+    const endValue = selectionEnd == null ? start : Number(selectionEnd);
+    const endCandidate = Number.isFinite(endValue) ? Math.min(Math.max(endValue, 0), max) : start;
+    const end = endCandidate < start ? start : endCandidate;
+    return { rawInput: s, selectionStart: start, selectionEnd: end };
   }
-  function getExerciseAutocompleteSuggestions(rawInput) {
-    const { namePart } = splitExerciseDraftForAutocomplete(rawInput);
-    const q = namePart.trim().toLowerCase();
+  function getExerciseAutocompleteMatches(rawQuery) {
+    const q = String(rawQuery || "").trim().toLowerCase();
     if (!q) return [];
 
     const starts = [];
@@ -1408,12 +1391,18 @@
     }
     return [...starts, ...contains].slice(0, 6);
   }
-  function applyExerciseAutocompleteSelection(rawInput, suggestion) {
-    const { suffixPart } = splitExerciseDraftForAutocomplete(rawInput);
-    return suffixPart ? `${suggestion} ${suffixPart}` : suggestion;
+  function getExerciseAutocompleteSuggestions(rawInput) {
+    return getExerciseAutocompleteMatches(rawInput);
   }
-  function splitWorkoutDraftForAutocomplete(raw) {
-    const s = String(raw || "");
+  function applyExerciseAutocompleteSelection(rawInput, suggestion) {
+    const s = String(rawInput || "");
+    const leadingWs = (s.match(/^\s*/) || [""])[0];
+    const value = `${leadingWs}${suggestion}`;
+    return { value, cursor: value.length };
+  }
+  function splitWorkoutDraftForAutocomplete(rawInput, selectionStart, selectionEnd) {
+    const sel = normalizeAutocompleteSelection(rawInput, selectionStart, selectionEnd);
+    const s = sel.rawInput;
     const m = s.match(/^(\S+)(\s+)(.*)$/);
     if (!m) return null;
 
@@ -1422,35 +1411,41 @@
 
     const dateSep = m[2];
     const rest = m[3] || "";
-    const lastCommaIndex = rest.lastIndexOf(",");
-    const prefix = lastCommaIndex >= 0 ? rest.slice(0, lastCommaIndex + 1) : "";
-    const activeChunk = lastCommaIndex >= 0 ? rest.slice(lastCommaIndex + 1) : rest;
+    const restOffset = dateToken.length + dateSep.length;
+    if (sel.selectionStart < restOffset) return null;
+
+    const cursorInRest = Math.min(Math.max(sel.selectionStart - restOffset, 0), rest.length);
+    const chunkStart = rest.lastIndexOf(",", Math.max(0, cursorInRest - 1)) + 1;
+    const chunkEndIndex = rest.indexOf(",", cursorInRest);
+    const chunkEnd = chunkEndIndex >= 0 ? chunkEndIndex : rest.length;
+    const activeChunk = rest.slice(chunkStart, chunkEnd);
     const leadingWs = (activeChunk.match(/^\s*/) || [""])[0];
+    const trailingWs = (activeChunk.match(/\s*$/) || [""])[0];
     const activeName = activeChunk.trim();
 
-    return { dateToken, dateSep, prefix, leadingWs, activeName };
+    return {
+      dateToken,
+      dateSep,
+      prefix: rest.slice(0, chunkStart),
+      suffix: rest.slice(chunkEnd),
+      leadingWs,
+      trailingWs,
+      activeName
+    };
   }
-  function getWorkoutAutocompleteSuggestions(rawInput) {
-    const split = splitWorkoutDraftForAutocomplete(rawInput);
+  function getWorkoutAutocompleteSuggestions(rawInput, selectionStart, selectionEnd) {
+    const split = splitWorkoutDraftForAutocomplete(rawInput, selectionStart, selectionEnd);
     if (!split) return [];
-
-    const q = split.activeName.toLowerCase();
-    if (!q) return [];
-
-    const starts = [];
-    const contains = [];
-    for (const candidate of state.exerciseLookup) {
-      const lc = candidate.toLowerCase();
-      if (lc === q) continue;
-      if (lc.startsWith(q)) starts.push(candidate);
-      else if (lc.includes(q)) contains.push(candidate);
-    }
-    return [...starts, ...contains].slice(0, 6);
+    return getExerciseAutocompleteMatches(split.activeName);
   }
-  function applyWorkoutAutocompleteSelection(rawInput, suggestion) {
-    const split = splitWorkoutDraftForAutocomplete(rawInput);
-    if (!split) return rawInput;
-    return `${split.dateToken}${split.dateSep}${split.prefix}${split.leadingWs}${suggestion}`;
+  function applyWorkoutAutocompleteSelection(rawInput, suggestion, selectionStart, selectionEnd) {
+    const split = splitWorkoutDraftForAutocomplete(rawInput, selectionStart, selectionEnd);
+    if (!split) return { value: String(rawInput || ""), cursor: String(rawInput || "").length };
+
+    const rest = `${split.prefix}${split.leadingWs}${suggestion}${split.trailingWs}${split.suffix}`;
+    const value = `${split.dateToken}${split.dateSep}${rest}`;
+    const cursor = split.dateToken.length + split.dateSep.length + split.prefix.length + split.leadingWs.length + suggestion.length;
+    return { value, cursor };
   }
 
   function getSummarizedSetGroups(sets) {
@@ -2077,10 +2072,15 @@
       }
     }
     function applyAutocompleteSuggestion(suggestion) {
-      input.value = applySuggestion(input.value, suggestion);
-      renderAutocomplete();
+      const next = applySuggestion(input.value, suggestion, input.selectionStart, input.selectionEnd);
+      const nextValue = typeof next === "string" ? next : (next && typeof next.value === "string" ? next.value : input.value);
+      const cursor = typeof next === "string"
+        ? nextValue.length
+        : (next && Number.isFinite(next.cursor) ? next.cursor : nextValue.length);
+      input.value = nextValue;
       input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
+      input.setSelectionRange(cursor, cursor);
+      renderAutocomplete();
     }
     function hideAutocomplete() {
       if (!autocompleteList) return;
@@ -2092,7 +2092,7 @@
     function renderAutocomplete() {
       if (!autocompleteList) return;
 
-      const suggestions = getSuggestions(input.value);
+      const suggestions = getSuggestions(input.value, input.selectionStart, input.selectionEnd);
       const activeSuggestion = autocompleteActiveIndex >= 0 && autocompleteActiveIndex < autocompleteItems.length
         ? autocompleteItems[autocompleteActiveIndex].textContent
         : "";
@@ -2198,6 +2198,12 @@
       autocompleteList.className = "autocompleteList";
       input.addEventListener("input", renderAutocomplete);
       input.addEventListener("focus", renderAutocomplete);
+      input.addEventListener("pointerup", () => queueMicrotask(renderAutocomplete));
+      input.addEventListener("keyup", (ev) => {
+        if (ev.key === "ArrowLeft" || ev.key === "ArrowRight" || ev.key === "Home" || ev.key === "End") {
+          renderAutocomplete();
+        }
+      });
       input.addEventListener("blur", () => setTimeout(hideAutocomplete, 120));
     }
 
