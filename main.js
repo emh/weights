@@ -568,6 +568,9 @@
     }
     return null;
   }
+  function normalizeWorkoutNotes(raw) {
+    return String(raw ?? "").replace(/\r\n?/g, "\n");
+  }
   function sanitizeState() {
     const cleanWorkouts = [];
 
@@ -602,7 +605,8 @@
       cleanWorkouts.push({
         id: String(rawW.id || uid()),
         dateISO,
-        exercises
+        exercises,
+        notes: normalizeWorkoutNotes(rawW.notes)
       });
     }
 
@@ -1077,7 +1081,7 @@
 
       let workout = existingWorkout;
       if (!workout) {
-        workout = { id: uid(), dateISO, exercises: [] };
+        workout = { id: uid(), dateISO, exercises: [], notes: "" };
         state.workouts.push(workout);
         workoutByDate.set(dateISO, workout);
         createdWorkouts += 1;
@@ -1361,7 +1365,7 @@
     if (!p) return null;
     const names = p.rest ? p.rest.split(",").map(x => x.trim()).filter(Boolean) : [];
     const exercises = names.map(n => ({ id: uid(), name: n, sets: [] }));
-    return { id: uid(), dateISO: p.dateISO, exercises };
+    return { id: uid(), dateISO: p.dateISO, exercises, notes: "" };
   }
 
   function parseExerciseLine(line) {
@@ -2809,6 +2813,7 @@
               compact:true,
               clearOnCancel:true
             });
+            if (ex.sets.length) add.classList.add("setAddEditor");
             setsBox.appendChild(add);
             if (opts.focusAddSet && isExpandedEx) focusTarget = add;
           }
@@ -2835,11 +2840,29 @@
           clearOnCancel:true,
           autocompleteExercise:true
         });
+        if (w.exercises.length) add.classList.add("exerciseAddEditor");
         wRow.appendChild(add);
         if (opts.focusAddExercise) focusTarget = add;
       }
 
       elList.appendChild(wRow);
+
+      const notesWrap = document.createElement("div");
+      notesWrap.className = "workoutNotes";
+
+      const notesField = document.createElement("textarea");
+      notesField.className = "workoutNotesField";
+      notesField.name = "workout-notes";
+      notesField.placeholder = "Notes...";
+      notesField.rows = 4;
+      notesField.value = normalizeWorkoutNotes(w.notes);
+      notesField.addEventListener("input", () => {
+        w.notes = normalizeWorkoutNotes(notesField.value);
+        save();
+      });
+
+      notesWrap.appendChild(notesField);
+      elList.appendChild(notesWrap);
     }
 
     renderHistoryDrawer(activeWorkout);
