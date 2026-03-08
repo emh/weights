@@ -162,6 +162,9 @@
 
   // ---------- Utilities ----------
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
+  const WORKOUT_ANALYSIS_MIN_WORKOUTS = 10;
+  const WORKOUT_INTENSITY_MIN_QUALIFYING_SETS = 2;
+  const WORKOUT_INTENSITY_MIN_QUALIFYING_WORKOUTS = 2;
   function normalizeThemeKey(rawThemeKey) {
     const t = String(rawThemeKey || "").trim().toLowerCase();
     const mapped = THEME_KEY_ALIASES[t] || t;
@@ -1683,10 +1686,14 @@
     }
   }
   function getSetComparableWeightLb(set) {
+    return getSetComparableLoadLb(set, "max");
+  }
+  function getSetComparableLoadLb(set, mode = "max") {
     if (!set || typeof set !== "object") return null;
 
+    const hasDirectWeight = set.weight != null && set.weight !== "";
     const directWeight = Number(set.weight);
-    if (Number.isFinite(directWeight)) {
+    if (hasDirectWeight && Number.isFinite(directWeight)) {
       return normalizeUnitToken(set.unit || "lb") === "kg" ? (directWeight * 2.2046226218) : directWeight;
     }
 
@@ -1702,8 +1709,199 @@
     const numbers = pieces.map(piece => Number(piece));
     if (numbers.some(n => !Number.isFinite(n))) return null;
     if (!numbers.length) return null;
-    const comparable = Math.max(...numbers);
+    const comparable = mode === "sum"
+      ? numbers.reduce((sum, value) => sum + value, 0)
+      : Math.max(...numbers);
     return unit === "kg" ? (comparable * 2.2046226218) : comparable;
+  }
+  function getSetRepEquivalent(set) {
+    const metricInfo = getSetMetric(set);
+    if (!metricInfo || metricInfo.metric === "invalid") return null;
+
+    const primary = Number(metricInfo.value);
+    const secondary = Number(metricInfo.secondary);
+    const total = primary + (Number.isFinite(secondary) && secondary > 0 ? secondary : 0);
+    if (!Number.isFinite(total) || total <= 0) return null;
+
+    if (metricInfo.metric === "seconds") return total / 10;
+    if (metricInfo.metric === "meters") return total / 10;
+    if (metricInfo.metric === "feet") return total / 30;
+    return total;
+  }
+  function getWorkoutRepEquivalentVolume(workout) {
+    if (!workout || !Array.isArray(workout.exercises)) return 0;
+
+    let total = 0;
+    for (const exercise of workout.exercises) {
+      const sets = Array.isArray(exercise && exercise.sets) ? exercise.sets : [];
+      for (const set of sets) {
+        const repEquivalent = getSetRepEquivalent(set);
+        if (Number.isFinite(repEquivalent) && repEquivalent > 0) total += repEquivalent;
+      }
+    }
+    return total;
+  }
+  function getSetLowRepIntensityCandidate(set) {
+    const metricInfo = getSetMetric(set);
+    if (!metricInfo || metricInfo.metric !== "reps") return null;
+
+    const reps = Number(metricInfo.value);
+    if (!Number.isInteger(reps) || reps <= 0 || reps > 5) return null;
+
+    const load = getSetComparableLoadLb(set, "sum");
+    if (!Number.isFinite(load) || load <= 0) return null;
+
+    return {
+      reps,
+      load,
+      estimatedMax: load * (1 + reps / 30)
+    };
+  }
+  function getWorkoutExerciseIntensityStats(workout) {
+    const byExercise = new Map();
+    if (!workout || !Array.isArray(workout.exercises)) return byExercise;
+
+    for (const exercise of workout.exercises) {
+      const key = normalizeExerciseName(exercise && exercise.name).toLowerCase();
+      if (!key) continue;
+
+      const sets = Array.isArray(exercise && exercise.sets) ? exercise.sets : [];
+      let entry = null;
+      for (const set of sets) {
+        const candidate = getSetLowRepIntensityCandidate(set);
+        if (!candidate) continue;
+
+        if (!entry) {
+          entry = {
+            qualifyingSetCount: 0,
+            maxLoad: 0,
+            estimatedMax: 0,
+            totalLoad: 0,
+            loadWeightedLoadSum: 0
+          };
+        }
+        entry.qualifyingSetCount += 1;
+        if (candidate.load > entry.maxLoad) entry.maxLoad = candidate.load;
+        if (candidate.estimatedMax > entry.estimatedMax) entry.estimatedMax = candidate.estimatedMax;
+        entry.totalLoad += candidate.load;
+        entry.loadWeightedLoadSum += candidate.load * candidate.load;
+      }
+
+      if (entry && entry.qualifyingSetCount > 0) {
+        entry.representativeLoad = entry.totalLoad > 0 ? (entry.loadWeightedLoadSum / entry.totalLoad) : 0;
+        byExercise.set(key, entry);
+      }
+    }
+
+    return byExercise;
+  }
+  function assignTercileBuckets(entries) {
+    const sorted = entries
+      .filter((entry) => entry && Number.isFinite(entry.score))
+      .slice()
+      .sort((a, b) => (a.score - b.score) || String(a.id).localeCompare(String(b.id)));
+    const bucketById = new Map();
+    const total = sorted.length;
+    if (!total) return bucketById;
+
+    let i = 0;
+    while (i < total) {
+      let j = i;
+      while (j + 1 < total && Math.abs(sorted[j + 1].score - sorted[i].score) < 1e-9) j += 1;
+
+      const averageRank = ((i + 1) + (j + 1)) / 2;
+      const percentile = averageRank / total;
+      const bucket = percentile <= (1 / 3)
+        ? "small"
+        : percentile <= (2 / 3)
+          ? "medium"
+          : "large";
+      for (let k = i; k <= j; k += 1) bucketById.set(sorted[k].id, bucket);
+      i = j + 1;
+    }
+
+    return bucketById;
+  }
+  function getWorkoutIndicatorMap() {
+    const workouts = Array.isArray(state.workouts) ? state.workouts : [];
+    const indicatorByWorkoutId = new Map();
+    if (workouts.length < WORKOUT_ANALYSIS_MIN_WORKOUTS) return indicatorByWorkoutId;
+
+    const volumeEntries = [];
+    const intensityStatsByWorkoutId = new Map();
+    const exerciseHistory = new Map();
+
+    for (const workout of workouts) {
+      volumeEntries.push({ id: workout.id, score: getWorkoutRepEquivalentVolume(workout) });
+
+      const workoutExerciseStats = getWorkoutExerciseIntensityStats(workout);
+      intensityStatsByWorkoutId.set(workout.id, workoutExerciseStats);
+
+      for (const [exerciseKey, stats] of workoutExerciseStats.entries()) {
+        const prev = exerciseHistory.get(exerciseKey) || {
+          estimatedMax: 0,
+          qualifyingSetCount: 0,
+          qualifyingWorkoutCount: 0
+        };
+        prev.qualifyingSetCount += stats.qualifyingSetCount;
+        prev.qualifyingWorkoutCount += 1;
+        if (stats.estimatedMax > prev.estimatedMax) prev.estimatedMax = stats.estimatedMax;
+        exerciseHistory.set(exerciseKey, prev);
+      }
+    }
+
+    const volumeBucketById = assignTercileBuckets(volumeEntries);
+    for (const workout of workouts) {
+      const volumeBucket = volumeBucketById.get(workout.id);
+      if (!volumeBucket) continue;
+
+      const workoutExerciseStats = intensityStatsByWorkoutId.get(workout.id);
+      if (!workoutExerciseStats || !workoutExerciseStats.size) {
+        indicatorByWorkoutId.set(workout.id, { volumeBucket, intensityBucket: null, intensityScore: null });
+        continue;
+      }
+
+      let weightedIntensitySum = 0;
+      let totalWeight = 0;
+
+      for (const [exerciseKey, workoutStats] of workoutExerciseStats.entries()) {
+        const history = exerciseHistory.get(exerciseKey);
+        if (!history) continue;
+        if (history.qualifyingSetCount < WORKOUT_INTENSITY_MIN_QUALIFYING_SETS) continue;
+        if (history.qualifyingWorkoutCount < WORKOUT_INTENSITY_MIN_QUALIFYING_WORKOUTS) continue;
+        if (!Number.isFinite(history.estimatedMax) || history.estimatedMax <= 0) continue;
+        if (!Number.isFinite(workoutStats.representativeLoad) || workoutStats.representativeLoad <= 0) continue;
+        if (!Number.isFinite(workoutStats.maxLoad) || workoutStats.maxLoad <= 0) continue;
+
+        const intensity = Math.max(0, Math.min(1, workoutStats.representativeLoad / history.estimatedMax));
+        weightedIntensitySum += intensity * workoutStats.maxLoad;
+        totalWeight += workoutStats.maxLoad;
+      }
+
+      if (!(totalWeight > 0)) {
+        indicatorByWorkoutId.set(workout.id, { volumeBucket, intensityBucket: null, intensityScore: null });
+        continue;
+      }
+
+      const intensityScore = weightedIntensitySum / totalWeight;
+      const intensityBucket = intensityScore < 0.6
+        ? "low"
+        : intensityScore < 0.8
+          ? "medium"
+          : "high";
+      indicatorByWorkoutId.set(workout.id, { volumeBucket, intensityBucket, intensityScore });
+    }
+
+    return indicatorByWorkoutId;
+  }
+  function formatWorkoutIndicatorLabel(indicator) {
+    if (!indicator) return "";
+    if (!indicator.intensityBucket) return `${indicator.volumeBucket} volume, intensity unavailable`;
+    return `${indicator.volumeBucket} volume, ${indicator.intensityBucket} intensity`;
+  }
+  function capitalizeToken(raw) {
+    const text = String(raw || "");
+    return text ? `${text[0].toUpperCase()}${text.slice(1)}` : "";
   }
   function setMatchesHistoryFilters(set, weightRule, repsRule) {
     if (!set || typeof set !== "object" || set.invalid) return false;
@@ -2550,6 +2748,7 @@
 
     if (state.screen === "main") {
       const workoutsDesc = [...state.workouts].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+      const workoutIndicators = getWorkoutIndicatorMap();
 
       if (!state.edit && state.mainAddOpen && elMainAddHost) {
         const add = makeInlineEditor({
@@ -2585,12 +2784,23 @@
         dow.className = "dow";
         dow.textContent = dowShort(w.dateISO);
 
+        const indicator = workoutIndicators.get(w.id) || null;
         const text = document.createElement("div");
         text.className = "workoutText";
         text.textContent = w.exercises.map(e => e.name).join(", ");
 
         line.appendChild(date);
         line.appendChild(dow);
+        if (indicator) {
+          const badge = document.createElement("span");
+          const intensityClass = indicator.intensityBucket
+            ? `workoutIndicatorIntensity${capitalizeToken(indicator.intensityBucket)}`
+            : "workoutIndicatorIntensityUnavailable";
+          badge.className = `workoutIndicator workoutIndicatorVolume${capitalizeToken(indicator.volumeBucket)} ${intensityClass}`;
+          badge.setAttribute("aria-label", formatWorkoutIndicatorLabel(indicator));
+          badge.title = formatWorkoutIndicatorLabel(indicator);
+          line.appendChild(badge);
+        }
         line.appendChild(text);
         if (isCurrentWorkoutRow) {
           const spacer = document.createElement("div");
