@@ -768,6 +768,7 @@
         state.expandedExerciseId = parsed.expandedExerciseId ?? null;
         state.current = parsed.current ?? null;
         sanitizeState();
+        openMainAddForZeroState();
 
         // Migrate legacy versions forward on first open.
         if (key !== LS_KEY) save();
@@ -817,9 +818,14 @@
     if (elSettingsBtn) elSettingsBtn.classList.toggle("open", settingsMenuOpen);
     if (!settingsMenuOpen) setDeleteAllConfirmOpen(false);
   }
+  function openMainAddForZeroState() {
+    if (state.screen === "main" && !state.workouts.length && !state.edit) {
+      state.mainAddOpen = true;
+    }
+  }
   function setScreenMain() {
     state.screen = "main";
-    state.mainAddOpen = false;
+    state.mainAddOpen = !state.workouts.length;
     state.historyOpen = false;
     state.historyMaxFocus = null;
     state.historyFilterOpen = false;
@@ -1947,11 +1953,12 @@
     }
     if (state.current && state.current.workoutId === workoutId) state.current = null;
     if (state.edit && state.edit.workoutId === workoutId) state.edit = null;
+    openMainAddForZeroState();
   }
   function removeAllWorkouts() {
     state.workouts = [];
     state.screen = "main";
-    state.mainAddOpen = false;
+    state.mainAddOpen = true;
     state.historyOpen = false;
     state.historyFilterOpen = false;
     state.historyFilterWeight = "";
@@ -2867,7 +2874,13 @@
 
     renderHistoryDrawer(activeWorkout);
 
-    if (focusTarget && (opts.focusEdit || opts.focusAddExercise || opts.focusAddSet)) {
+    const shouldFocusZeroStateMainAdd =
+      state.screen === "main" &&
+      state.mainAddOpen &&
+      !state.edit &&
+      !state.workouts.length;
+
+    if (focusTarget && (opts.focusEdit || opts.focusAddExercise || opts.focusAddSet || shouldFocusZeroStateMainAdd)) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (focusTarget && focusTarget._focus) focusTarget._focus();
@@ -3058,6 +3071,7 @@
 
   registerPwaServiceWorker();
   load();
+  openMainAddForZeroState();
   buildThemeOptions();
   applyAppearance();
   render();
