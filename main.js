@@ -1588,14 +1588,33 @@
     applySetRpe(set, rawRpe);
     return true;
   }
+  function applyLiveSetEdit(exercise, setIndex, text, rawRpe) {
+    if (!exercise || !Array.isArray(exercise.sets)) return false;
+    if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= exercise.sets.length) return false;
+
+    const existing = exercise.sets[setIndex];
+    if (!existing || typeof existing !== "object") return false;
+
+    const t = String(text || "").trim();
+    if (!t) {
+      applySetRpe(existing, rawRpe);
+      return true;
+    }
+
+    const prev = setIndex > 0 ? exercise.sets[setIndex - 1] : null;
+    const next = parseSingleSet(t, prev) || makeInvalidSet(t, { rpe: rawRpe });
+    applySetRpe(next, rawRpe);
+    exercise.sets[setIndex] = next;
+    return true;
+  }
   function isCurrentWorkout(workoutId) {
     return !!state.current && state.current.kind === "workout" && state.current.workoutId === workoutId;
   }
   function isCurrentExercise(workoutId, exerciseId) {
     return !!state.current &&
-      state.current.kind === "exercise" &&
       state.current.workoutId === workoutId &&
-      state.current.exerciseId === exerciseId;
+      state.current.exerciseId === exerciseId &&
+      (state.current.kind === "exercise" || state.current.kind === "set");
   }
   function isCurrentSet(workoutId, exerciseId, setIndex) {
     return !!state.current &&
@@ -2093,6 +2112,7 @@
     value,
     onCommit,
     onCancel,
+    onFocus=null,
     compact=false,
     clearOnCancel=false,
     autocompleteExercise=false,
@@ -2114,6 +2134,9 @@
     input.spellcheck = false;
     input.placeholder = placeholder || "";
     input.value = value || "";
+    if (typeof onFocus === "function") {
+      input.addEventListener("focus", onFocus);
+    }
 
     const ok = document.createElement("div");
     ok.className = "btn ok";
@@ -2288,6 +2311,55 @@
 
     return wrapper;
   }
+  function makeSetInlineEditor({
+    value,
+    rpe,
+    onChange,
+    onCancel,
+    onDelete,
+    compact=true
+  }) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "inlineEditor";
+
+    const row = document.createElement("div");
+    row.className = "inputRow" + (compact ? " compact" : "");
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.name = "set-entry";
+    input.autocomplete = "off";
+    input.autocapitalize = "sentences";
+    input.spellcheck = false;
+    input.placeholder = "Set...";
+    input.value = value || "";
+
+    const rpeSelect = makeRpeSelect({ rpe }, () => {});
+    const deleteBtn = onDelete ? makeDeleteButton(onDelete, { focusAddSet:true }) : null;
+    const applyChange = () => onChange(input.value, { rpe: rpeSelect.value });
+
+    input.addEventListener("input", applyChange);
+    rpeSelect.addEventListener("change", applyChange);
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    });
+
+    row.appendChild(input);
+    row.appendChild(rpeSelect);
+    if (deleteBtn) row.appendChild(deleteBtn);
+    wrapper.appendChild(row);
+
+    wrapper._focus = () => {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+
+    return wrapper;
+  }
 
   // ---------- Actions ----------
   function beginEditWorkout(w) {
@@ -2303,7 +2375,7 @@
   }
   function beginEditSet(w, ex, idx) {
     setCurrentSet(w.id, ex.id, idx);
-    state.edit = { kind:"set", workoutId:w.id, exerciseId:ex.id, setIndex:idx, draft: formatSetEdit(ex.sets[idx]) };
+    state.edit = null;
     render({ focusEdit:true });
   }
   function cancelEdit() {
@@ -2311,7 +2383,7 @@
     render();
   }
 
-  function commitEdit(text) {
+  function commitEdit(text, extras = null) {
     const t = text.trim();
     const edit = state.edit;
     if (!edit) return;
@@ -2378,9 +2450,11 @@
 
       if (!t) return;
       const prev = idx > 0 ? ex.sets[idx - 1] : null;
-      const existingRpe = ex.sets[idx] ? ex.sets[idx].rpe : null;
-      const set = parseSingleSet(t, prev) || makeInvalidSet(t);
-      applySetRpe(set, existingRpe);
+      const rawRpe = extras && Object.prototype.hasOwnProperty.call(extras, "rpe")
+        ? extras.rpe
+        : (ex.sets[idx] ? ex.sets[idx].rpe : null);
+      const set = parseSingleSet(t, prev) || makeInvalidSet(t, { rpe: rawRpe });
+      applySetRpe(set, rawRpe);
       ex.sets[idx] = set;
       state.edit = null;
       save();
@@ -2658,27 +2732,31 @@
           setsBox.className = "setsList";
 
           ex.sets.forEach((s, idx) => {
-            if (state.edit && state.edit.kind === "set" &&
-                state.edit.workoutId === w.id &&
-                state.edit.exerciseId === ex.id &&
-                state.edit.setIndex === idx) {
-              const editor = makeInlineEditor({
-                placeholder: "Set...",
-                value: state.edit.draft,
-                onCommit: commitEdit,
-                onCancel: cancelEdit,
+            const isCurrentSetRow = isCurrentSet(w.id, ex.id, idx);
+            if (isCurrentSetRow) {
+              const editor = makeSetInlineEditor({
+                value: formatSetEdit(s),
+                rpe: s.rpe,
+                onChange: (txt, extras) => {
+                  if (!applyLiveSetEdit(ex, idx, txt, extras && extras.rpe)) return;
+                  save();
+                },
+                onCancel: () => {
+                  setCurrentExercise(w.id, ex.id);
+                  save();
+                  render();
+                },
+                onDelete: () => removeSet(w, ex, idx),
                 compact:true
               });
               setsBox.appendChild(editor);
-              focusTarget = editor;
+              if (opts.focusEdit) focusTarget = editor;
               return;
             }
 
             const setLine = document.createElement("div");
             setLine.className = "setLine";
             if (s.invalid) setLine.classList.add("setInvalid");
-            const isCurrentSetRow = isCurrentSet(w.id, ex.id, idx);
-            if (isCurrentSetRow) setLine.classList.add("currentFocus");
 
             const setValue = document.createElement("span");
             setValue.className = "setValue";
@@ -2689,32 +2767,18 @@
             spacer.className = "rowSpacer";
             setLine.appendChild(spacer);
 
-            if (isCurrentSetRow) {
-              const actions = document.createElement("div");
-              actions.className = "rowActions";
-              actions.appendChild(makeRpeSelect(s, (rawRpe) => {
-                if (!setSetRpe(ex, idx, rawRpe)) return;
-                save();
-              }));
-              actions.appendChild(makeEditButton(() => beginEditSet(w, ex, idx)));
-              actions.appendChild(makeDeleteButton(() => removeSet(w, ex, idx)));
-              setLine.appendChild(actions);
-            } else {
-              const rpeLabel = formatSetRpeLabel(s);
-              if (rpeLabel) {
-                const meta = document.createElement("span");
-                meta.className = "setMeta setRpe";
-                meta.textContent = rpeLabel;
-                setLine.appendChild(meta);
-              }
+            const rpeLabel = formatSetRpeLabel(s);
+            if (rpeLabel) {
+              const meta = document.createElement("span");
+              meta.className = "setMeta setRpe";
+              meta.textContent = rpeLabel;
+              setLine.appendChild(meta);
             }
 
             bindTapHandlers(setLine, {
               onTap: () => {
                 if (state.edit) return;
-                setCurrentSet(w.id, ex.id, idx);
-                save();
-                render();
+                beginEditSet(w, ex, idx);
               }
             });
 
@@ -2726,6 +2790,16 @@
               placeholder: "Set...",
               value: "",
               onCommit: (txt) => commitAdd(txt),
+              onFocus: () => {
+                const isCurrentSetForExercise = !!state.current &&
+                  state.current.kind === "set" &&
+                  state.current.workoutId === w.id &&
+                  state.current.exerciseId === ex.id;
+                if (!isCurrentSetForExercise) return;
+                setCurrentExercise(w.id, ex.id);
+                save();
+                render({ focusAddSet:true });
+              },
               onCancel: () => {
                 state.expandedExerciseId = null;
                 setCurrentWorkout(w.id);
