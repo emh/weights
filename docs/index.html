@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weights UI Tour</title>
+  <style>
+    :root {
+      --bg: #eef1f5;
+      --surface: #ffffff;
+      --ink: #1d2733;
+      --muted: #5f6b78;
+      --line: #d7dee6;
+      --accent: #cc5b34;
+      --shadow: 0 16px 40px rgba(20, 32, 45, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(204, 91, 52, 0.08), transparent 30%),
+        linear-gradient(180deg, #f7f8fb 0%, var(--bg) 100%);
+      color: var(--ink);
+      font: 16px/1.5 "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 20px 64px;
+    }
+
+    header {
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .lede {
+      margin: 0;
+      color: var(--muted);
+      max-width: 680px;
+    }
+
+    .section {
+      display: grid;
+      gap: 24px;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+      align-items: start;
+      padding: 24px;
+      margin-top: 20px;
+      background: color-mix(in srgb, var(--surface) 94%, #f4f6f8 6%);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .section.copyOnly {
+      grid-template-columns: 1fr;
+    }
+
+    .shot {
+      margin: 0;
+    }
+
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #dfe5eb;
+    }
+
+    .copy h2 {
+      margin: 0 0 10px;
+      font-size: 1.35rem;
+      line-height: 1.15;
+    }
+
+    .copy p {
+      margin: 0 0 12px;
+      color: var(--muted);
+    }
+
+    .copy ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .copy li + li {
+      margin-top: 8px;
+    }
+
+    code {
+      font: 0.92em/1.2 Menlo, Consolas, monospace;
+      background: #f3f5f8;
+      border: 1px solid #e3e8ee;
+      border-radius: 6px;
+      padding: 0 4px;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        padding: 28px 14px 40px;
+      }
+
+      .section {
+        grid-template-columns: 1fr;
+        padding: 18px;
+        border-radius: 16px;  
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>weights</h1>
+    </header>
+
+    <section class="section">
+      <figure class="shot">
+        <img src="/docs/workout-list.png" alt="Workout list screen">
+      </figure>
+      <div class="copy">
+        <h2>Workout List</h2>
+        <p>This is the main screen. Each row shows the workout date, day of week, volume/intensity marker, and exercise summary.</p>
+        <ul>
+          <li>Tap a row to expand or collapse its exercise details.</li>
+          <li>Tap the pencil on the current row to open that workout for editing.</li>
+          <li>Tap delete to remove a workout.</li>          
+          <li>The circle icon is a v isual indicator of relative volume and intensity. Color indicates intensity: yellow = low, orange = moderate, red = high and gray means there wasn't sufficient data to calculate intensity. The circle size indicates volume: small, medium, large. These will only show up once there is enough data.</li>  
+          <li>Clck the + button to create a new workout.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <figure class="shot">
+        <img src="/docs/create-workout.png" alt="Create workout">
+      </figure>
+      <div class="copy">
+        <h2>Create Workout</h2>
+        <p>This is the inline add-workout flow on the main screen. Enter the date first, then optionally add exercises as a comma-separated list.</p>
+        <ul>
+          <li>Tap the + button to create a new workout.</li>
+          <li>Enter the date of the workout like 2026.03.08</li>
+          <li>Optionally include a comma-separated list of exercises like: 2026.03.08 bench press, deadlift.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <figure class="shot">
+        <img src="/docs/view-workout.png" alt="Workout detail">
+      </figure>
+      <div class="copy">
+        <h2>View Workout</h2>
+        <p>View workout details on main screen.</p>
+        <ul>
+          <li>Tap a workout to make it current and see its details.</li>
+          <li>Tap the pencil to edit the workout.</li>
+          <li>Tap the delete button to remove the workout.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <figure class="shot">
+        <img src="/docs/edit-workout.png" alt="Workout editing screen">
+      </figure>
+      <div class="copy">
+        <h2>Edit Workout</h2>
+        <p>Edit the workout details on the workout screen.</p>
+        <ul>
+          <li>Enter a new exercise into the exercise input field. Optionally use the sets/reps/weight shorthand to include sets and reps like: "bench press 5@135 165 5x5@195".</li>
+          <li>Tap an exercise to make it current and expand its sets. Add additional sets in the Sets input field.</li>
+          <li>Tap the pencil to edit the exercise name and details.</li>
+          <li>Tap the delete button to remove the exercise from the workout.</li>
+          <li>Tap on a set to edit the reps and weight and to set an RPE.</li>
+          <li>Tap the pencil on the current exercise to edit it. Here you can use shorthand like: :5x5@225 3@255" to quickly enter sets and reps.</li>
+          <li>Use the notes field to add or edit notes for the workout.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <figure class="shot">
+        <img src="/docs/history.png" alt="Exercise history drawer">
+      </figure>
+      <div class="copy">
+        <h2>History</h2>
+        <p>The history drawer gives context for the currently selected exercise inside a workout.</p>
+        <ul>
+          <li>Tap an exercise to select it and reveal the history drawer.</li>
+          <li>Tap the history drawer to expand it and see past efforts for that exercise as well as a list of maxes at various reps.</li>
+          <li>Tap a max to scroll to that entry in the history.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <figure class="shot">
+        <img src="/docs/settings.png" alt="Settings">
+      </figure>
+      <div class="copy">
+        <h2>Settings</h2>
+        <p>The gear icon on the main screen shows the settings panel.</p>
+        <ul>
+          <li>Export CSV will download all your workout data as a CSV file.</li>
+          <li>Import CSV will load workout data from a saved CSV file.</li>
+          <li>Font size and Theme Color adjust the appearance of the app.</li>
+          <li>Delete all workout data will remove all your saved workouts.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section copyOnly">
+      <div class="copy">
+        <h2>Entry Shorthand</h2>
+        <p>You can enter workouts, exercises, and sets in a compact text format. These are the most useful patterns.</p>
+        <ul>
+          <li>New workout: <code>2026.03.08 bench press, deadlift, row</code></li>
+          <li>Date shortcuts also work: <code>t</code> for today, <code>y</code> for yesterday, <code>tmr</code> for tomorrow.</li>
+          <li>New exercise with sets: <code>bench press 5x5@225</code></li>
+          <li>Mixed sets: <code>deadlift 5@315 5@365 5@405</code></li>
+          <li>Repeated weighted sets: <code>3x5@225</code></li>
+          <li>Repeated unweighted sets: <code>4x8</code></li>
+          <li>Timed and distance sets: <code>plank 3x30s</code>, <code>sled push 4x20m@90</code>, <code>carry 3x60ft@70/70</code></li>
+          <li>Split values are supported: <code>kb snatch 3x6/6@24kg</code>, <code>side extension 2x10/10</code></li>
+          <li>After one weighted set, <code>@</code> reuses the previous load: <code>5@225 5@ 5@</code></li>
+          <li>You can separate set tokens with spaces or commas: <code>5@225 5@245 5@265</code> or <code>5@225, 5@245, 5@265</code></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
