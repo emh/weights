@@ -998,8 +998,41 @@
     if (!/[",\r\n]/.test(s)) return s;
     return `"${s.replace(/"/g, "\"\"")}"`;
   }
+  function summarizeSetRpesCsv(sets) {
+    if (!Array.isArray(sets) || !sets.length) return "";
+    return sets.map((set) => {
+      const rpe = normalizeRpeValue(set && set.rpe);
+      return rpe == null ? "" : String(rpe);
+    }).join(",");
+  }
+  function applyImportedSetRpes(sets, rawRpeField) {
+    if (!Array.isArray(sets) || !sets.length) return true;
+
+    const raw = String(rawRpeField ?? "");
+    if (!raw.trim()) return true;
+
+    const values = raw.split(",").map((part) => {
+      const token = String(part || "").trim();
+      return token ? normalizeRpeValue(token) : null;
+    });
+
+    if (values.some((value, idx) => {
+      const token = String(raw.split(",")[idx] || "").trim();
+      return token && value == null;
+    })) {
+      return false;
+    }
+
+    while (values.length > sets.length && values[values.length - 1] == null) values.pop();
+    if (values.length > sets.length) return false;
+
+    for (let i = 0; i < sets.length; i += 1) {
+      applySetRpe(sets[i], values[i]);
+    }
+    return true;
+  }
   function buildExportCsvData() {
-    const rows = [["date", "exercise", "sets/reps/weight"]];
+    const rows = [["date", "exercise", "sets/reps/weight", "rpe"]];
     const workoutsAsc = [...state.workouts].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
     for (const workout of workoutsAsc) {
@@ -1009,7 +1042,7 @@
         const name = normalizeExerciseName(exercise.name);
         if (!name) continue;
         const sets = Array.isArray(exercise.sets) ? exercise.sets : [];
-        rows.push([date, name, summarizeSets(sets)]);
+        rows.push([date, name, summarizeSets(sets), summarizeSetRpesCsv(sets)]);
       }
     }
 
@@ -1083,6 +1116,10 @@
           : null;
         parsedSets = parseSetsSpec(setsSpec, prev) || [];
         if (!parsedSets.length) {
+          skippedRows += 1;
+          continue;
+        }
+        if (!applyImportedSetRpes(parsedSets, row[3])) {
           skippedRows += 1;
           continue;
         }
@@ -3073,6 +3110,16 @@
       notesField.placeholder = "Notes...";
       notesField.rows = 4;
       notesField.value = normalizeWorkoutNotes(w.notes);
+      notesField.addEventListener("focus", () => {
+        if (state.screen !== "workout") return;
+        const hasExpandedExercise = !!state.expandedExerciseId;
+        const hasCurrentSelection = !!state.current;
+        if (!hasExpandedExercise && !hasCurrentSelection) return;
+        state.expandedExerciseId = null;
+        state.current = null;
+        save();
+        render({ focusNotes:true });
+      });
       notesField.addEventListener("input", () => {
         w.notes = normalizeWorkoutNotes(notesField.value);
         save();
@@ -3080,6 +3127,7 @@
 
       notesWrap.appendChild(notesField);
       elList.appendChild(notesWrap);
+      if (opts.focusNotes) focusTarget = notesField;
     }
 
     renderHistoryDrawer(activeWorkout);
@@ -3090,10 +3138,12 @@
       !state.edit &&
       !state.workouts.length;
 
-    if (focusTarget && (opts.focusEdit || opts.focusAddExercise || opts.focusAddSet || shouldFocusZeroStateMainAdd)) {
+    if (focusTarget && (opts.focusEdit || opts.focusAddExercise || opts.focusAddSet || opts.focusNotes || shouldFocusZeroStateMainAdd)) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (focusTarget && focusTarget._focus) focusTarget._focus();
+          if (!focusTarget) return;
+          if (focusTarget._focus) focusTarget._focus();
+          else if (typeof focusTarget.focus === "function") focusTarget.focus();
         });
       });
     }
