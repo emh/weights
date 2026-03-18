@@ -53,7 +53,6 @@
   let importStatusTimer = null;
   let settingsMenuOpen = false;
   let deleteAllConfirmOpen = false;
-  let liveSetEditSession = null;
   const HISTORY_CHEVRON_UP = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m18 15-6-6-6 6"></path>
@@ -1622,22 +1621,6 @@
 
   function findWorkout(id) { return state.workouts.find(w => w.id === id) || null; }
   function findExercise(w, exId) { return w.exercises.find(e => e.id === exId) || null; }
-  function resetLiveSetEditSession() {
-    liveSetEditSession = null;
-  }
-  function startLiveSetEditSession(workoutId, exerciseId, setIndex) {
-    liveSetEditSession = { workoutId, exerciseId, setIndex, span: 1 };
-    return liveSetEditSession;
-  }
-  function getLiveSetEditSession(workoutId, exerciseId, setIndex) {
-    if (!liveSetEditSession ||
-        liveSetEditSession.workoutId !== workoutId ||
-        liveSetEditSession.exerciseId !== exerciseId ||
-        liveSetEditSession.setIndex !== setIndex) {
-      return startLiveSetEditSession(workoutId, exerciseId, setIndex);
-    }
-    return liveSetEditSession;
-  }
   function buildEditedSetReplacement(exercise, setIndex, text, rawRpe) {
     if (!exercise || !Array.isArray(exercise.sets)) return null;
     if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= exercise.sets.length) return null;
@@ -1668,31 +1651,6 @@
     const set = exercise.sets[setIndex];
     if (!set || typeof set !== "object") return false;
     applySetRpe(set, rawRpe);
-    return true;
-  }
-  function applyLiveSetEdit(workout, exercise, setIndex, text, rawRpe) {
-    if (!workout || !exercise || !Array.isArray(exercise.sets)) return false;
-    if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= exercise.sets.length) return false;
-
-    const session = getLiveSetEditSession(workout.id, exercise.id, setIndex);
-    const existing = exercise.sets[session.setIndex];
-    if (!existing || typeof existing !== "object") return false;
-
-    const t = String(text || "").trim();
-    if (!t) {
-      applySetRpe(existing, rawRpe);
-      if (session.span > 1) {
-        exercise.sets.splice(session.setIndex + 1, session.span - 1);
-        session.span = 1;
-      }
-      return true;
-    }
-
-    const replacement = buildEditedSetReplacement(exercise, session.setIndex, t, rawRpe);
-    if (!replacement || !replacement.length) return false;
-
-    exercise.sets.splice(session.setIndex, session.span, ...replacement);
-    session.span = replacement.length;
     return true;
   }
   function isCurrentWorkout(workoutId) {
@@ -2258,14 +2216,7 @@
   }
   function removeSet(workout, exercise, setIndex) {
     if (setIndex < 0 || setIndex >= exercise.sets.length) return;
-    const activeSession = liveSetEditSession &&
-      liveSetEditSession.workoutId === workout.id &&
-      liveSetEditSession.exerciseId === exercise.id &&
-      liveSetEditSession.setIndex === setIndex
-      ? liveSetEditSession
-      : null;
-    const deleteCount = activeSession ? Math.max(1, activeSession.span) : 1;
-    exercise.sets.splice(setIndex, deleteCount);
+    exercise.sets.splice(setIndex, 1);
 
     if (state.current &&
         state.current.kind === "set" &&
@@ -2288,8 +2239,6 @@
         state.edit.setIndex -= 1;
       }
     }
-
-    if (activeSession) resetLiveSetEditSession();
   }
   function makeDeleteButton(onDelete, renderOpts) {
     const deleteBtn = document.createElement("button");
@@ -2607,9 +2556,8 @@
   function makeSetInlineEditor({
     value,
     rpe,
-    onChange,
+    onCommit,
     onCancel,
-    onDelete,
     compact=true
   }) {
     const wrapper = document.createElement("div");
@@ -2628,13 +2576,31 @@
     input.value = value || "";
 
     const rpeSelect = makeRpeSelect({ rpe }, () => {});
-    const deleteBtn = onDelete ? makeDeleteButton(onDelete, { focusAddSet:true }) : null;
-    const applyChange = () => onChange(input.value, { rpe: rpeSelect.value });
+    const ok = document.createElement("div");
+    ok.className = "btn ok";
+    ok.textContent = "✓";
+    ok.title = "OK";
 
-    input.addEventListener("input", applyChange);
-    rpeSelect.addEventListener("change", applyChange);
+    const cancel = document.createElement("div");
+    cancel.className = "btn cancel";
+    cancel.textContent = "×";
+    cancel.title = "Cancel";
+
+    ok.addEventListener("pointerup", (e) => {
+      e.preventDefault();
+      onCommit(input.value, { rpe: rpeSelect.value });
+    }, { passive:false });
+    cancel.addEventListener("pointerup", (e) => {
+      e.preventDefault();
+      onCancel();
+    }, { passive:false });
 
     input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onCommit(input.value, { rpe: rpeSelect.value });
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         onCancel();
@@ -2643,7 +2609,8 @@
 
     row.appendChild(input);
     row.appendChild(rpeSelect);
-    if (deleteBtn) row.appendChild(deleteBtn);
+    row.appendChild(ok);
+    row.appendChild(cancel);
     wrapper.appendChild(row);
 
     wrapper._focus = () => {
@@ -2656,26 +2623,30 @@
 
   // ---------- Actions ----------
   function beginEditWorkout(w) {
-    resetLiveSetEditSession();
     setCurrentWorkout(w.id);
     state.edit = { kind:"workout", workoutId: w.id, draft: fmtDateDisplay(w.dateISO) };
     render({ focusEdit:true });
   }
   function beginEditExercise(w, ex) {
-    resetLiveSetEditSession();
     setCurrentExercise(w.id, ex.id);
     const summary = summarizeSets(ex.sets);
     state.edit = { kind:"exercise", workoutId:w.id, exerciseId:ex.id, draft: summary ? `${ex.name} ${summary}` : ex.name };
     render({ focusEdit:true });
   }
   function beginEditSet(w, ex, idx) {
-    startLiveSetEditSession(w.id, ex.id, idx);
     setCurrentSet(w.id, ex.id, idx);
-    state.edit = null;
+    const set = ex && Array.isArray(ex.sets) ? ex.sets[idx] : null;
+    state.edit = {
+      kind:"set",
+      workoutId: w.id,
+      exerciseId: ex.id,
+      setIndex: idx,
+      draft: formatSetEdit(set),
+      rpe: normalizeRpeValue(set && set.rpe)
+    };
     render({ focusEdit:true });
   }
   function cancelEdit() {
-    resetLiveSetEditSession();
     state.edit = null;
     render();
   }
@@ -2822,7 +2793,6 @@
   function render(opts = {}) {
     sortWorkoutsAsc();
     coerceCurrentToVisible();
-    if (!state.current || state.current.kind !== "set") resetLiveSetEditSession();
     elList.innerHTML = "";
     if (elMainAddHost) elMainAddHost.innerHTML = "";
 
@@ -2987,6 +2957,10 @@
         const exDiv = document.createElement("div");
         exDiv.className = "exerciseLine";
         const isCurrentExerciseRow = isCurrentExercise(w.id, ex.id);
+        const isDirectCurrentExerciseRow = !!state.current &&
+          state.current.kind === "exercise" &&
+          state.current.workoutId === w.id &&
+          state.current.exerciseId === ex.id;
 
         const top = document.createElement("div");
         top.className = "exerciseTop";
@@ -3002,7 +2976,7 @@
           summary.textContent = summarizeSets(ex.sets);
           top.appendChild(summary);
         }
-        if (isCurrentExerciseRow) {
+        if (isDirectCurrentExerciseRow) {
           const spacer = document.createElement("div");
           spacer.className = "rowSpacer";
           const actions = document.createElement("div");
@@ -3042,21 +3016,17 @@
 
           ex.sets.forEach((s, idx) => {
             const isCurrentSetRow = isCurrentSet(w.id, ex.id, idx);
-            if (isCurrentSetRow) {
+            const isEditingSetRow = !!state.edit &&
+              state.edit.kind === "set" &&
+              state.edit.workoutId === w.id &&
+              state.edit.exerciseId === ex.id &&
+              state.edit.setIndex === idx;
+            if (isEditingSetRow) {
               const editor = makeSetInlineEditor({
-                value: formatSetEdit(s),
-                rpe: s.rpe,
-                onChange: (txt, extras) => {
-                  if (!applyLiveSetEdit(w, ex, idx, txt, extras && extras.rpe)) return;
-                  save();
-                },
-                onCancel: () => {
-                  resetLiveSetEditSession();
-                  setCurrentExercise(w.id, ex.id);
-                  save();
-                  render();
-                },
-                onDelete: () => removeSet(w, ex, idx),
+                value: state.edit.draft,
+                rpe: state.edit.rpe,
+                onCommit: commitEdit,
+                onCancel: cancelEdit,
                 compact:true
               });
               setsBox.appendChild(editor);
@@ -3067,6 +3037,7 @@
             const setLine = document.createElement("div");
             setLine.className = "setLine";
             if (s.invalid) setLine.classList.add("setInvalid");
+            if (isCurrentSetRow) setLine.classList.add("currentFocus");
 
             const setValue = document.createElement("span");
             setValue.className = "setValue";
@@ -3085,10 +3056,25 @@
               setLine.appendChild(meta);
             }
 
+            if (isCurrentSetRow) {
+              const actions = document.createElement("div");
+              actions.className = "rowActions";
+              actions.appendChild(makeEditButton(() => beginEditSet(w, ex, idx)));
+              actions.appendChild(makeDeleteButton(() => removeSet(w, ex, idx), { focusAddSet:true }));
+              setLine.appendChild(actions);
+            }
+
             bindTapHandlers(setLine, {
               onTap: () => {
                 if (state.edit) return;
-                beginEditSet(w, ex, idx);
+                const wasCurrentSet = isCurrentSet(w.id, ex.id, idx);
+                if (wasCurrentSet) {
+                  setCurrentExercise(w.id, ex.id);
+                } else {
+                  setCurrentSet(w.id, ex.id, idx);
+                }
+                save();
+                render();
               }
             });
 
