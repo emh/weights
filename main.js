@@ -53,6 +53,7 @@
   let importStatusTimer = null;
   let settingsMenuOpen = false;
   let deleteAllConfirmOpen = false;
+  let liveSetEditSession = null;
   const HISTORY_CHEVRON_UP = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m18 15-6-6-6 6"></path>
@@ -1621,6 +1622,37 @@
 
   function findWorkout(id) { return state.workouts.find(w => w.id === id) || null; }
   function findExercise(w, exId) { return w.exercises.find(e => e.id === exId) || null; }
+  function resetLiveSetEditSession() {
+    liveSetEditSession = null;
+  }
+  function startLiveSetEditSession(workoutId, exerciseId, setIndex) {
+    liveSetEditSession = { workoutId, exerciseId, setIndex, span: 1 };
+    return liveSetEditSession;
+  }
+  function getLiveSetEditSession(workoutId, exerciseId, setIndex) {
+    if (!liveSetEditSession ||
+        liveSetEditSession.workoutId !== workoutId ||
+        liveSetEditSession.exerciseId !== exerciseId ||
+        liveSetEditSession.setIndex !== setIndex) {
+      return startLiveSetEditSession(workoutId, exerciseId, setIndex);
+    }
+    return liveSetEditSession;
+  }
+  function buildEditedSetReplacement(exercise, setIndex, text, rawRpe) {
+    if (!exercise || !Array.isArray(exercise.sets)) return null;
+    if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= exercise.sets.length) return null;
+
+    const t = String(text || "").trim();
+    if (!t) return null;
+
+    const prev = setIndex > 0 ? exercise.sets[setIndex - 1] : null;
+    const parsedSets = parseSetsSpec(t, prev);
+    if (parsedSets && parsedSets.length) {
+      return parsedSets.map((set, idx) => applySetRpe(set, idx === 0 ? rawRpe : null));
+    }
+
+    return [makeInvalidSet(t, { rpe: rawRpe })];
+  }
   function setCurrentWorkout(workoutId) {
     state.current = { kind:"workout", workoutId };
   }
@@ -1638,23 +1670,29 @@
     applySetRpe(set, rawRpe);
     return true;
   }
-  function applyLiveSetEdit(exercise, setIndex, text, rawRpe) {
-    if (!exercise || !Array.isArray(exercise.sets)) return false;
+  function applyLiveSetEdit(workout, exercise, setIndex, text, rawRpe) {
+    if (!workout || !exercise || !Array.isArray(exercise.sets)) return false;
     if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= exercise.sets.length) return false;
 
-    const existing = exercise.sets[setIndex];
+    const session = getLiveSetEditSession(workout.id, exercise.id, setIndex);
+    const existing = exercise.sets[session.setIndex];
     if (!existing || typeof existing !== "object") return false;
 
     const t = String(text || "").trim();
     if (!t) {
       applySetRpe(existing, rawRpe);
+      if (session.span > 1) {
+        exercise.sets.splice(session.setIndex + 1, session.span - 1);
+        session.span = 1;
+      }
       return true;
     }
 
-    const prev = setIndex > 0 ? exercise.sets[setIndex - 1] : null;
-    const next = parseSingleSet(t, prev) || makeInvalidSet(t, { rpe: rawRpe });
-    applySetRpe(next, rawRpe);
-    exercise.sets[setIndex] = next;
+    const replacement = buildEditedSetReplacement(exercise, session.setIndex, t, rawRpe);
+    if (!replacement || !replacement.length) return false;
+
+    exercise.sets.splice(session.setIndex, session.span, ...replacement);
+    session.span = replacement.length;
     return true;
   }
   function isCurrentWorkout(workoutId) {
@@ -2220,7 +2258,14 @@
   }
   function removeSet(workout, exercise, setIndex) {
     if (setIndex < 0 || setIndex >= exercise.sets.length) return;
-    exercise.sets.splice(setIndex, 1);
+    const activeSession = liveSetEditSession &&
+      liveSetEditSession.workoutId === workout.id &&
+      liveSetEditSession.exerciseId === exercise.id &&
+      liveSetEditSession.setIndex === setIndex
+      ? liveSetEditSession
+      : null;
+    const deleteCount = activeSession ? Math.max(1, activeSession.span) : 1;
+    exercise.sets.splice(setIndex, deleteCount);
 
     if (state.current &&
         state.current.kind === "set" &&
@@ -2243,6 +2288,8 @@
         state.edit.setIndex -= 1;
       }
     }
+
+    if (activeSession) resetLiveSetEditSession();
   }
   function makeDeleteButton(onDelete, renderOpts) {
     const deleteBtn = document.createElement("button");
@@ -2609,22 +2656,26 @@
 
   // ---------- Actions ----------
   function beginEditWorkout(w) {
+    resetLiveSetEditSession();
     setCurrentWorkout(w.id);
     state.edit = { kind:"workout", workoutId: w.id, draft: fmtDateDisplay(w.dateISO) };
     render({ focusEdit:true });
   }
   function beginEditExercise(w, ex) {
+    resetLiveSetEditSession();
     setCurrentExercise(w.id, ex.id);
     const summary = summarizeSets(ex.sets);
     state.edit = { kind:"exercise", workoutId:w.id, exerciseId:ex.id, draft: summary ? `${ex.name} ${summary}` : ex.name };
     render({ focusEdit:true });
   }
   function beginEditSet(w, ex, idx) {
+    startLiveSetEditSession(w.id, ex.id, idx);
     setCurrentSet(w.id, ex.id, idx);
     state.edit = null;
     render({ focusEdit:true });
   }
   function cancelEdit() {
+    resetLiveSetEditSession();
     state.edit = null;
     render();
   }
@@ -2695,13 +2746,12 @@
       }
 
       if (!t) return;
-      const prev = idx > 0 ? ex.sets[idx - 1] : null;
       const rawRpe = extras && Object.prototype.hasOwnProperty.call(extras, "rpe")
         ? extras.rpe
         : (ex.sets[idx] ? ex.sets[idx].rpe : null);
-      const set = parseSingleSet(t, prev) || makeInvalidSet(t, { rpe: rawRpe });
-      applySetRpe(set, rawRpe);
-      ex.sets[idx] = set;
+      const replacement = buildEditedSetReplacement(ex, idx, t, rawRpe);
+      if (!replacement || !replacement.length) return;
+      ex.sets.splice(idx, 1, ...replacement);
       state.edit = null;
       save();
       render();
@@ -2772,6 +2822,7 @@
   function render(opts = {}) {
     sortWorkoutsAsc();
     coerceCurrentToVisible();
+    if (!state.current || state.current.kind !== "set") resetLiveSetEditSession();
     elList.innerHTML = "";
     if (elMainAddHost) elMainAddHost.innerHTML = "";
 
@@ -2996,10 +3047,11 @@
                 value: formatSetEdit(s),
                 rpe: s.rpe,
                 onChange: (txt, extras) => {
-                  if (!applyLiveSetEdit(ex, idx, txt, extras && extras.rpe)) return;
+                  if (!applyLiveSetEdit(w, ex, idx, txt, extras && extras.rpe)) return;
                   save();
                 },
                 onCancel: () => {
+                  resetLiveSetEditSession();
                   setCurrentExercise(w.id, ex.id);
                   save();
                   render();
