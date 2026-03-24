@@ -1,14 +1,13 @@
-const CACHE_NAME = "weights-static-v4";
+const CACHE_NAME = "weights-static-v6";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./main.js",
   "./manifest.webmanifest",
-  "./favicon.svg",
-  "./apple-touch-icon.png",
-  "./icon-192.png",
-  "./icon-512.png"
+  "./apple-touch-icon.png?v=20260323",
+  "./icon-192.png?v=20260323",
+  "./icon-512.png?v=20260323"
 ];
 const SHELL_DESTINATIONS = new Set(["document", "script", "style", "manifest"]);
 
